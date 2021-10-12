@@ -2,8 +2,6 @@
 This module contains the tests for timeconv function
 """
 # Standard library imports
-
-
 # Third party imports
 from pytest import approx
 #https://www.scivision.dev/pytest-approx-equal-assert-allclose/
