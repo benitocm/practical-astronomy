@@ -1,0 +1,2094 @@
+
+
+"""
+This module contains functions related to orbit calculations
+"""
+# Standard library imports
+from typing import Any,Dict,List,Tuple,Sequence
+#https://mypy.readthedocs.io/en/stable/cheat_sheet_py3.html
+
+from datetime import datetime
+from functools import partial
+from collections import namedtuple
+import re as re
+
+# Third party imports
+import numpy as np
+from numpy import sin, cos, tan, arcsin, arccos, arctan, arctan2,deg2rad,rad2deg
+import toolz as tz
+from toolz import pipe, compose
+
+
+# Local application imports
+#import timeconv as tc
+from myastro.timeconv import  sin_dgms, cos_dgms, tan_dgms
+from myastro import timeconv as tc
+#from myastro import coord as co
+
+from myastro.log import get_logger
+
+
+"""
+def equat2horiz(lat_dg:float, H_h:float , dec_dg:float) -> Tuple : 
+       Converts from equatorial to horizontal
+
+    Args:
+        lat_dg : observer's latitude in degrees [-90,90]
+        H_h: hour angle in time units (hours) [0,24]
+        dec_dg : declination in angle units (degrees) [-90,90]    
+    """
+
+
+
+def T (year,month,fd):
+    """ 
+    Computes the number of Julian centuries between the epoch and 2000 January
+    1 (12h). See pag 32 in Astronmy with your Personal Computer
+
+    Args:
+        epoch:
+
+    Returns :
+        A float with nunmber of Julian centuries
+    """    
+
+    jd = tc.datefd2jd(year,month,fd)
+    return (jd - 2451545)/36525
+
+
+#obliq_pol = partial(tc.polynomial,0,46.815,0.0006,-0.00181,0)
+
+"""
+def eclip_obliquity(std_epoch_name="J2000"):
+    
+    Returns the obliquity angle of the ecliptic [deg]
+    
+    year = 2000 if std_epoch_name == "J2000" else int(std_epoch_name.split(".")[0])
+    jd = tc.datefd2jd(year,1,0)
+    centuries = (jd - 2451545)/36525
+    d = obliq_pol(centuries) 
+    e = 23.439292 - (d/3600)
+    return e
+"""
+
+
+#obliquity_rads = compose(deg2rad,obliquity)
+
+"""
+Returns the obliquity angle of the ecliptic [rads]
+"""
+
+"""
+def mk_eclip_vect(lambda_dg, beta_dg):
+    v = np.array([1,deg2rad(lambda_dg), deg2rad(beta_dg)])
+    return v
+
+def mk_equat_vect(ra_h, dec_dg):
+    v = np.array([1,deg2rad(ra_h*15.0), deg2rad(dec_dg)])
+    return v
+
+def equatFeclip(eclip_vect, std_epoch_name="J2000"):
+    eps = eclip_obliquity_rads(std_epoch_name)
+    r_ra_dec = pipe(eclip_vect,cartesianFpolar,Rx_3d(-1*eps).dot,polarFcartesian)
+    #eclip_cart = cartesianFpolar(eclip_vect)
+    #r_ra_dec = polarFcartesian(Rx_3d(-1.0*eps).dot(eclip_cart))
+    print (r_ra_dec)
+    r_ra_dec[1] = rad2deg(r_ra_dec[1])/15.0
+    r_ra_dec[2] = rad2deg(r_ra_dec[2])
+    return r_ra_dec
+
+def eclipFequat(equat_vect, std_epoch_name="J2000"):
+    eps = eclip_obliquity_rads(std_epoch_name)
+    r_lambda_beta = pipe(equat_vect,cartesianFpolar,Rx_3d(eps).dot,polarFcartesian)
+    #equat_cart = cartesianFpolar(equat_vect)
+    #r_lambda_beta = polarFcartesian(Rx_3d(eps).dot(equat_cart))
+    r_lambda_beta[1] = rad2deg(r_lambda_beta[1])
+    r_lambda_beta[2] = rad2deg(r_lambda_beta[2])
+    return r_lambda_beta
+
+
+def eclipic2equat_vector(lon_dg, lat_dg, std_epoch_name="J2000"):
+    # See page 18 in Astronomy of the personal computer
+    r = 1
+    v = np.array([r,np.deg2rad(lon_dg), np.deg2rad(lat_dg)])
+    obliq = np.deg2rad(24.3)
+    rot_matrix  = Rx_3d(-obliq)
+    v_out = Rx_3d(-obliq).dot(polar2rect_v(v))
+    v_out[1] = v_out[1]/15.0
+    return rec2polar_v(v_out)
+
+def as_str(vect,fmt):
+    if fmt=="equat":
+       hms = format_time(tc.h2hms(vect[1]))
+       dgms = format_dg(*tc.dg2dgms(vect[2]))
+       return f"EQUAT: ra: {hms}  dec: {dgms}"
+    elif fmt=="polar":
+        return "r: {:02.4f}  phi: {:02.4f}  theta: {:02.4f}".format(*vect)
+    elif fmt=="cart":
+        return "x: {:02.4f}  y: {:02.4f}  z: {:02.4f}".format(*vect)
+    elif fmt=="eclipt":
+       #print (rad2deg(vect[1]))        
+       #dgms_l = pipe(vect[1], rad2deg, tc.dg2dgms)
+       dgms_l = pipe(vect[1], tc.dg2dgms)
+       #format_dg(tc.dg2dgms(vect[1])) 
+       dgms_b = pipe(vect[2], tc.dg2dgms)
+       return f"ECLIP: lambda: {dgms_l}  beta: {dgms_b}"
+"""
+"""
+This module contains functions related to coordinates and
+orbits
+"""
+# Standard library imports
+from typing import Any,Dict,List,Tuple,Sequence
+#https://mypy.readthedocs.io/en/stable/cheat_sheet_py3.html
+
+from datetime import datetime
+from functools import partial
+from toolz import pipe, compose
+
+# Third party imports
+import numpy as np
+from pytz import timezone
+from numpy.polynomial.polynomial import Polynomial
+from numpy import sin, cos, tan, arcsin, arccos, arctan2
+from datetime import datetime
+import toolz as tz
+# Using Newton-Ramson method
+from scipy.optimize import newton, bisect
+
+
+# Local application imports
+#import timeconv as tc
+from myastro import timeconv as tc
+
+
+
+# azimut (az) goes from 0 (north,east,south,west) to 360
+# altitude h -90,+90  Positivo indicates objets above the horizon
+#  
+
+def equat2horiz(lat_dg:float, H_h:float , dec_dg:float) -> Tuple : 
+    """
+    Converts from equatorial to horizontal
+
+    Args:
+        lat_dg : observer's latitude in degrees [-90,90]
+        H_h: hour angle in time units (hours) [0,24]
+        dec_dg : declination in angle units (degrees) [-90,90]
+
+    Returns :
+        The altitude in degress [-90,90]
+        The azimut  in degress [0,360]
+    """
+
+    lat, H, dec = np.deg2rad([lat_dg,H_h*15,dec_dg])
+        
+    sin_alt = sin(lat)*sin(dec)+cos(lat)*cos(dec)*cos(H)
+
+    alt = np.arcsin(sin_alt)
+    az = np.arctan2(-sin(H)*cos(dec)*cos(lat),sin(dec)-sin(lat)*sin_alt)
+    if az<0 :
+      az = az+2*np.pi    
+    return np.rad2deg(alt), np.rad2deg(az)
+
+
+def horiz2equat(lat_dg:float, alt_dg:float , az_dg:float ) -> Tuple:
+    """
+    Converts from horizontal to equatorial    
+
+    Args:
+        lat_dg : observer's latitude in degrees [-90,90]
+        alt_dg: altitud in degress [-90,90]
+        az_dg : azimut in degress [0,360]  
+
+    Returns :
+        The hour angle in time units [0,24)
+        The declination in angle units (degrees) [-90,90]
+    """
+
+    lat, alt, az = np.deg2rad([lat_dg,alt_dg,az_dg])
+    
+    sin_dec = sin(alt)*sin(lat) + cos(alt)*cos(lat)*cos(az)
+    dec = np.arcsin(sin_dec)        
+    H = np.arctan2(-sin(az)*cos(alt)*cos(lat),sin(alt)-sin_dec*sin(lat))
+    if H<0 :
+        H = H+2*np.pi
+    return np.rad2deg(H)/15, np.rad2deg(dec)
+
+obliq_pol = partial(tc.polynomial,0,46.815,0.0006,-0.00181,0)
+
+def obl_ecliptic(std_epoch_name):
+    """
+    Returns the obliquity angle of the ecliptic in degrees
+    """
+    year = 2000 if std_epoch_name == "J2000" else int(std_epoch_name.split(".")[0])
+    jd = tc.datefd2jd(year,1,0)
+    centuries = (jd - 2451545)/36525
+    d = obliq_pol(centuries) 
+    e = 23.439292 - (d/3600)
+    return e
+
+
+def eclip2equat(lon_dg, lat_dg, std_epoch_name="J2000"):
+
+    """
+    Converts from ecliptic to equatorial
+
+    Args:
+        lon_deg (lambda): ecliptic longitude in degrees [0,360]
+        lat_deg (beta): ecliptic latitude in degrees [-90,90]
+
+        ra_h : right accension in hours [0,24]
+        dec_deg : ecliptic longitude in degrees [-90,90]
+        from_equinox : in float format e.g. 1950.0, 2000.0 (instead of "J2000")
+        to_equinox : in float format e.g. 1950.0, 2000.0 (instead of "J2000")
+
+    Returns :
+        Right ascension in time units (hours) [0,24]
+        Declination  in angle units (degrees) [-90,90]
+    """
+
+    lat, lon, obl = np.deg2rad([lat_dg,lon_dg,obl_ecliptic(std_epoch_name)])
+    dec = np.arcsin(sin(lat) * cos(obl) + cos(lat) * sin(obl) * sin(lon))        
+    ra = arctan2(sin(lon) * cos(obl) - tan(lat) * sin(obl), cos(lon))
+
+    if ra<0 :
+        ra = ra+2*np.pi
+    return np.rad2deg(ra)/15, np.rad2deg(dec)
+
+
+def equat2eclip(ra_h:float, dec_dg:float, std_epoch_name:str ="J2000" )->Tuple:
+    """
+    Converts from to equatorial to ecliptic
+
+    Args:
+        lon_deg (lambda): ecliptic longitude in degrees [0,360]
+        lat_deg (beta): ecliptic latitude in degrees [-90,90]
+        std_epoch_name : 
+
+    Returns :
+        Ecliptic longitud (lambda) in angle units (degrees) [0,360]
+        Ecliptic latitud (beta) in angle units (degrees) [-90,90]
+        
+    """
+
+    ra, dec, obl = np.deg2rad([tc.hms2dg(ra_h),dec_dg,obl_ecliptic(std_epoch_name)])
+    # http://ircamera.as.arizona.edu/Astr_518/ametry.pdf indicates that the 
+    # equation on lat has - sign but in the book Celestial calculations does not have it
+    # in both equations 
+    lat = np.arcsin(np.sin(dec)*np.cos(obl)-np.cos(dec)*np.sin(obl)*np.sin(ra))      
+    lon = arctan2(sin(ra)*cos(obl)+tan(dec)*sin(obl),cos (ra))
+    if lon<0 :
+        lon = lon+2*np.pi
+
+    return np.rad2deg(lon), np.rad2deg(lat)
+
+
+def equinox_correction(ra_h,dec_dg,from_epoch, to_epoch):
+    """
+    Calculate the correction to equatorial coordinates due
+    to equinox precesion
+
+    Args:
+        ra_h : right accension in hours [0,24]
+        dec_deg : ecliptic longitude in degrees [-90,90]
+        from_equinox : in float format e.g. 1950.0, 2000.0 (instead of "J2000")
+        to_equinox : in float format e.g. 1950.0, 2000.0 (instead of "J2000")
+
+    Returns :
+        ra : right ascension corrected in hours [0,24]
+        dec : declination corrected in degrees [-90,90]
+
+    """
+
+    ra, dec  = np.deg2rad([tc.hms2dg(ra_h),dec_dg])
+    cent = (to_epoch - 1900)/100
+    m = tc.polynomial(3.07234,0.00186,0,0,0,cent)
+    n_deg = tc.polynomial(20.0468,-0.0085,0,0,0,cent)
+    n_t = n_deg/15
+    corr_ra_in_secs = (m+n_t * sin(ra) * tan(dec)) * (to_epoch - from_epoch)
+    corr_dec_in_secs = n_deg * cos(ra) * (to_epoch - from_epoch)
+    # ra and dec now are reused to calculate in the right units.
+    ra = ra_h + corr_ra_in_secs/3600
+    dec = dec_dg + corr_dec_in_secs/3600
+    return ra,dec
+
+
+
+def dist_obj_to_focus(e, sm_axis, t_anomaly) :
+    """
+    Calculate the distance of the orbiting object to the occupied
+    focus.
+    """
+    return sm_axis * (1 - e*e)/(1+0.5*cos_dgms(t_anomaly))
+
+def m_anomaly (orb_period, t) :
+    """
+    Calculate the mean anomaly at one specific point in time (t).
+    T and t must be specified in the same units.
+    
+    Args:
+        orb_period : The orbital period in time units
+        t : The specific period in tiem units
+
+    Returns :
+        The mean anomaly in angle units (degrees)
+    """
+
+    return 360*t/orb_period
+
+"""
+def center_eq(m_anomaly, e):
+    e_2 = e*e
+    e_3 = e_2*e
+    t1 = 2*e*sin_dgms(m_anomaly)
+    t2 = 5*e_2*sin_dgms(2*m_anomaly)/4
+    t3 = e_3*(13*sin_dgms(3*m_anomaly)-3*sin_dgms(m_anomaly))/12
+    return (180/np.pi)*(t1+t2+t3)
+
+
+def tan_t_anomaly_half(e,e_anomaly):
+    return np.sqrt((1+e)/(1-e))*tan_dgms(e_anomaly/2)
+
+def cos_t_anomaly (e,e_anomaly):
+    cos_e_anomaly = np.cos(e_anomaly)
+    return (cos_e_anomaly-e)/(1-e*cos_e_anomaly)
+
+def tan_e_anomaly_half(t_anomaly,e):
+    return tan_t_anomaly_half(e,t_anomaly)
+"""    
+
+def U (Omega, i , omega, t_anomaly, modulus):
+    """ 
+    Computes the U matrix directly instead of using the Gauss vectors and
+    it is used to transform from the orbital plane coordinate
+    system to the ecliptic system.
+
+    Args:
+        modulus : modulus of the vector to transform
+        Omega : The longitude of the ascending node, angle between 
+                the vernal equinox and the point at which the comet
+                crosses the ecliptic [rads]
+        i : Inclination, angle of intersection between the orbital plane
+            and the ecliptic. >90 means the comet is retrograde, its
+            directionof revolution around the Sun begin opposite to that
+            of the planets [rads].
+        omega : Argument of perihelion is the angle between the direciton of the
+                ascending node an dthe direction of the closest point of the
+                orbit ot the Sun [rads].
+        t_anomaly : True anomaly [rads]
+        modulus : modulus of the vector to transform
+
+        
+    Returns :
+        The 3-vector tranfomred in the ecliptic system 
+    """    
+
+    u = omega + t_anomaly
+    cos_Omega = np.cos(Omega)
+    sin_Omega = np.sin(Omega)
+    sin_u = np.sin(u)
+    cos_u = np.cos(u)
+    sin_i = np.sin(i)
+    cos_i = np.cos(i)
+    u1 = cos_u * cos_Omega - sin_u*cos_i*sin_Omega
+    u2 = cos_u * sin_Omega + sin_u*cos_i*cos_Omega
+    u3 = sin_u * sin_i
+    return modulus* np.array([u1,u2,u3])
+
+
+"""
+def rect2polar(x,y,z):
+    r = np.sqrt(x*x+y*y+z*z)
+    phi =  np.arctan2(y,x)
+    theta = np.arctan2(z,np.sqrt(x*x+y*y))
+    return r, phi, theta
+
+def rec2polar_v(vect):
+    return np.array(rec2polar(*vect))
+
+def polar2rect(r,phi,theta) :
+    r_cos_theta = r*np.cos(theta)
+    return r_cos_theta*np.cos(phi), r_cos_theta*np.sin(phi), r*np.sin(theta)
+
+def polar2rect_v(vect):
+    return np.array(polar2rect(*vect))    
+
+
+def eclipic2equat_vector(lon_dg, lat_dg, std_epoch_name="J2000"):
+    # See page 18 in Astronomy of the personal computer
+    r = 1
+    v = np.array([r,np.deg2rad(lon_dg), np.deg2rad(lat_dg)])
+    obliq = np.deg2rad(24.3)
+    rot_matrix  = Rx_3d(-obliq)
+    v_out = Rx_3d(-obliq).dot(polar2rect_v(v))
+    v_out[1] = v_out[1]/15.0
+    return rec2polar_v(v_out)
+
+"""
+
+if __name__ == "__main__":
+    #e = 0.5
+    #m_anomaly = 24.7432896
+    e = 0.999
+    m_anomaly = 7
+
+    #solve_ke(e,m_anomaly,e_anomaly_rad)
+    #solve_ke(e,m_anomaly,e_anomaly_rad_v2)
+    #solve_ke_newton(e,m_anomaly,e_anomaly_rad)
+    #solve_ke_newton(e,m_anomaly,e_anomaly_rad_v2)
+    #solve_ke_bisect(e,m_anomaly,e_anomaly_rad_v2)
+       
+
+    #solve_ke_v1(0.99,2)
+    #solve_ke_v2(0.99,2)
+    #solve_ke_v2(0.5,24.7432896)
+    #solve_ke_v3(0.5,24.7432896)
+
+    #print (equat2horiz(25,16.495833,-0.508333))
+
+    #alt, az = equat2horiz(-80,7,tc.degms2deg(49,54,20))
+    #print (alt)
+    ##print (az)
+
+    #print(obl_ecliptic("2010.0"))
+
+   # lon, lat = tc.degms2deg(184,36,00),tc.degms2deg(1,12,00)
+   # print (eclip2equat(lon,lat))
+
+
+    #lon = tc.degms2deg(5,36,00)
+    #lat = tc.degms2deg(1,12,00)
+    #lon = tc.degms2deg(4,36,0)
+    #lat = tc.degms2deg(1,12,0)
+    #ra, dec = eclip2equat(lon,lat)
+    #print (tc.h2hms(ra),tc.deg2degms(dec))
+    #lon1, lat1 = equat2eclip(ra,dec)
+    #print (lon,lon1)
+    #print (lat,lat1)
+
+    #print ()
+    #print (equinox_correction(12.816667,27.4,1950.0,2000.0))
+    
+
+    
+    t0 = (1986.0, 2.0, 9.43867)  #  Time of perihelion 
+    q = 0.5870992 # Perihelion distance q in AU
+    e = 0.9672725 # Eccentricity 
+    i = deg2rad(162.23932) # inclination
+    Omega = deg2rad(58.14397) # Longitude of the ascending node
+    omega = deg2rad(111.84658) # Argument of the perihelion
+    equinox = "1950.0" # Equinos for teh orbital elements
+
+    Mjd0 = tc.ymfd2mjd(*t0) # Modified Julian day for the time of perihelion
+    print ("Mjd0: ",Mjd0)
+    PQR = co.U_mtx(Omega,i,omega)
+    print ("PQR: ",PQR)
+    T_eq0 = (1950.0 - 2000.0)/100.0
+    print ("T_eq0: ",T_eq0, co.T("1950.0"))
+    # Julian centuries between the epoch given and J2000
+    #print ("T:", co.T("1950.0"))
+    ## Matrix to transform from orbital plane to the ecliptic plane
+    mtx_U = co.U_mtx(Omega,i,omega)
+
+    """
+    Ephemerid data
+    """
+    from_date = (1985,11,15,00.0)
+    from_mjd = tc.ymdfh2mjd(*from_date)
+    to_date = (1986,14,1,00.0)
+    to_mjd = tc.ymdfh2mjd(*to_date)
+    step_dd_fh = (10,0.0)
+    step = step_dd_fh[0] + step_dd_fh[1]/24.0
+    desired_equinox = "2000.0"
+    T_eqx = (2000.0 - 2000.0)/100.0
+    print ("T_eqx: ",T_eqx, co.T(desired_equinox))
+
+
+    """
+    Computing
+
+    //
+    // SunPos: Computes the Sun’s ecliptical position using analytical series
+    // T Time in Julian centuries since J2000
+    // <return> Geocentric position of the Sun (in [AU]), referred to the
+    // ecliptic and equinox of date
+    //
+
+    """
+    # Matrix to account for the change in the equinox
+    mtx_prec_eclip = co.prec_mtx_eclip(T_eq0,T_eqx)
+    mtx_U = mtx_prec_eclip.dot( mtx_U)
+    # mtx_U now will tranform from orbital plane to the eclipt plane
+    # and also adjust for the diferent equinoxes
+
+    clock_mjd = from_mjd
+    while (clock_mjd < to_mjd) :
+        line = f"Date: {pipe(clock_mjd,tc.mjd2jd,jd2str_date)}  "
+        # The geo-ecliptical polar coordinates of the sun refered
+        # to the equinox of date
+        sun_eclip = pipe(clock_mjd, tc.mjd2jd,  pl.sun_geo_eclipt_position)
+        T = (clock_mjd - 51544.5) / 36525.0
+        # correction from the equinox of the date to the J2000 used for the sun position
+        mtx_sun_prec_eclip = co.prec_mtx_eclip(T,T_eqx)
+        # vector earth to sun in cartesian corrected in equinox in the eclipt coordinate system
+        eclip_earth_sun = pipe(sun_eclip.v,co.cartesianFpolar,mtx_sun_prec_eclip.dot,co.polarFcartesian)
+
+        #print ("Sun (dg): ",rad2deg(eclip_earth_sun[1]))
+        line += f"Sun (dg): {rad2deg(eclip_earth_sun[1]):03.1f}  "
+        r_eclip_earth_sun = co.cartesianFpolar(eclip_earth_sun)
+        #print (as_str(co.Coord(co.polarFcartesian(r_eclip_earth_sun),"",ECLIP_TYPE)))
+        
+        # Compute mean anomaly as function of GM, q and e
+        inv_ax = (1.0 - e)/q
+        m_anomaly = sqrt(GM)*(clock_mjd-Mjd0)*sqrt(inv_ax*inv_ax*inv_ax)
+
+        # position and velocity (cartesians) of the comet w.r.t the orbital plane
+        r_plane_sun_comet, v_plane_sun_comet = elliptic_orbit(next_E, m_anomaly, 1/inv_ax, e)
+        r_eclip_sun_comet = mtx_U.dot(r_plane_sun_comet)
+        v_eclip_sun_comet = mtx_U.dot(v_plane_sun_comet)
+        # We have calculated the cartesian coordinates of the comet
+        # in the ecliptical system and corrected by the equinox
+        # centered in the sun 
+        #print ("cartesian", r_eclip_sun_comet)
+        #print ("polar rads", co.polarFcartesian(r_eclip_sun_comet))
+        #print ("polar dg", pipe(co.polarFcartesian(r_eclip_sun_comet),rad2deg))
+        eclip_sun_comet = co.polarFcartesian(r_eclip_sun_comet)
+        line += f"l: {rad2deg(eclip_sun_comet[1]):03.1f}°  b: {rad2deg(eclip_sun_comet[2]):03.1f}°    r: {eclip_sun_comet[0]:03.4f}  "
+        #print (f"l: {rad2deg(eclip_sun_comet[1]):03.1f}°  b: {rad2deg(eclip_sun_comet[2]):03.1f}°    r: {eclip_sun_comet[0]:03.4f}")
+
+        r_eclip_earth_comet = r_eclip_earth_sun + r_eclip_sun_comet
+
+        #print (f"[AU]: {np.linalg.norm(r_eclip_earth_comet):03.4f}")
+        line += f"[AU]: {np.linalg.norm(r_eclip_earth_comet):03.4f}"
+        # First-order light-time correction
+        factor = 0.00578 *  np.linalg.norm(r_eclip_earth_comet)
+        r_eclip_earth_comet = r_eclip_earth_comet - factor*v_eclip_sun_comet 
+        # 
+        r_eclip_earth_comet = co.mtx_equatFeclip(desired_equinox).dot(r_eclip_earth_comet)
+        #comet_equat = co.polarFcartesian(r_earth_comet)
+        comet_equat = co.Coord(co.polarFcartesian(r_eclip_earth_comet),desired_equinox,EQUAT2_TYPE)
+        line += as_str(comet_equat)
+        print (line)
+        #print (as_str(comet_equat))
+        clock_mjd += step
+
+def _with_initial_propagation(body_elms, eph):
+    # The integration has 2 phases:
+    #   The first, propagate the (r,v) state vector from epoch of the body ("1983.09.23.0") 
+    #   to the begin of the ephemeris (elm.epoch_mjd). This is so because the mean anomaly
+    #   used is the one of the epoch of the body elements                 
+    #   The second, integrate all the ephemeris time interval [eph.from_mjd, eph.to_mjd]
+    
+    # The vector state is calculated at the epoch of the body elements and it is propagated
+    # to the initial time of the ephemeris
+
+    # Using the mean anomaly of the orbital element we will calculate
+    # the body's position at that time, ie., at the epoch of the data
+    # in the book's example at 1983.09.23 that's the reason because we
+    # need to pre-integrate from that time to the start of the ephemeris.
+
+    r0, v0 = ob.elliptic_orbit(ob.next_E, body_elms.M, body_elms.a, body_elms.e)
+    y0 = np.concatenate((r0, v0))
+    t_sol = list(ut.xfrange(eph.from_mjd, eph.to_mjd, eph.step))
+    sol = ob.do_integration(ob.my_f, y0, body_elms.epoch_mjd, t_sol[-1], t_sol)       
+    return sol
+
+def _with_no_propagation(body_elms, eph, prev_steps=0):
+    # The integration is basically done acrooss the ephemeris interval 
+    # although allow to start in point in the past.
+    from_mjd = eph.from_mjd - prev_steps*eph.step
+    M = ob.calc_M_by_M0(from_mjd, body_elms.epoch_mjd, body_elms.M, body_elms.period_in_days)    
+    r0, v0 = ob.elliptic_orbit(ob.next_E, M, body_elms.a, body_elms.e)
+    y0 = np.concatenate((r0, v0))
+    t_sol = list(ut.xfrange(eph.from_mjd, eph.to_mjd, eph.step))
+    sol = ob.do_integration(ob.my_f, y0, from_mjd, t_sol[-1], t_sol) 
+    return sol
+
+
+def calc_eph_minor_body_perturbed_backup(body_elms, eph):
+
+    # This matrix just depends on the desired equinox to calculate the obliquity
+    # to pass from ecliptic coordinate system to equatorial
+    mtx_equatFeclip = co.mtx_equatFeclip(eph.eqx_name)
+
+    T_J2000 = 0.0    
+    prec_mtx_J2000_Teq = co.prec_mtx_eclip(T_J2000, eph.T_eqx)
+    # If the equinox to precess (T_eqx) is J2000, this matrix will be the identify matrix np.identity(3)    
+
+    # the PQR mtx of the body elemts is preccesed from equinox of body object to the desired equinox 
+    mtx_PQR_J2000 = co.prec_mtx_eclip(body_elms.T_eqx0, T_J2000).dot(body_elms.mtx_PQR)
+
+    # The integration will be done in the orbital plane frame of reference, so the result
+    # will be moved to the epliptic. In the book, the intergration is done in eclipt
+    if body_elms.epoch_mjd < eph.from_mjd :
+        sol = _with_initial_propagation(body_elms, eph)
+    else :
+        sol = _with_no_propagation(body_elms,eph)
+    #print (sol.t)
+    
+    #r0, v0 = ob.elliptic_orbit(ob.next_E, M, body_elms.a, body_elms.e)
+    #y0 = np.concatenate((r0, v0))
+   
+    # The first sample t index=0 is the start of the ephemeris period
+    #r = prec_mtx_J2000_Teq.dot(sol.y[:,0][:3])
+    #v = prec_mtx_J2000_Teq.dot(sol.y[:,0][3:6])
+
+    # Osculating orbital parameters at the beginning of the ephemeris
+    #print (ob.calc_osculating_orb_elmts(r,v,sol.t[0],eph.eqx_name))
+
+    rows = []
+    for idx, clock_mjd in enumerate(sol.t) :  
+        row = {}
+        row['date'] = pipe(clock_mjd, tc.mjd2jd, tc.jd2str_date)
+
+        T = (clock_mjd - co.MDJ_J2000) / 36525.0
+
+        r, v = (sol.y[:,idx][:3], sol.y[:,idx][3:6])
+        # Heliocentric coordinates from orbital plane to ecliptic
+        r, v = map(mtx_PQR_J2000.dot, (r,v))
+        # Heliocentric coordinates from J2000 to equinox T_eqx
+        r_heclip_body, v_heclip_body = map(prec_mtx_J2000_Teq.dot, (r,v))
+
+        T = (clock_mjd - co.MDJ_J2000) / 36525.0
+        # The geo-ecliptical polar coordinates of the sun referenced to the equinox of date
+        sun_eclip = pipe(clock_mjd, tc.mjd2jd,  pl.sun_geo_eclipt_position)
+
+
+        # Equinox correction from "equinox of date" (so it depends on any different date) to J2000 (the desired one) is calculated
+        
+        # vector earth to sun (polar format) corrected in equinox in the eclipt coordinate system
+        eclip_earth_sun = pipe(sun_eclip.v, co.cartesianFpolar, co.prec_mtx_eclip(T,eph.T_eqx).dot, co.polarFcartesian)
+    
+        row['sun (dg)'] = f"{rad2deg(eclip_earth_sun[1]):03.1f}"
+
+        heclip_body = co.polarFcartesian(r_heclip_body)
+
+        row['l'] = f"{rad2deg(heclip_body[1]):03.2f}"
+        row['b'] = f"{rad2deg(heclip_body[2]):03.2f}"
+        row['r'] = f"{heclip_body[0]:03.4f}"
+
+        r_geclip_sun = co.cartesianFpolar(eclip_earth_sun)        
+        r_geclip_body = r_geclip_sun + r_heclip_body        
+
+        r_AU = f"{norm(r_geclip_body):03.4f}"        
+
+        dist = norm(r_geclip_body)
+        fac = 0.00578*dist
+        r_geclip_body -= fac*v_heclip_body
+        # Polar equatorial coordinates of the object
+        equat_body = pipe(r_geclip_body, mtx_equatFeclip.dot, co.polarFcartesian)
+        row['ra'] = co.format_time(pipe(equat_body[1],rad2deg,tc.dg2h,tc.h2hms))
+        row['dec'] = co.format_dg(*pipe(equat_body[2],rad2deg,tc.dg2dgms))
+        row['r[AU]'] = r_AU
+        #row['x_heclip_body'] = r_heclip_body[0]
+        #row['y_heclip_body'] = r_heclip_body[1]
+        #row['z_heclip_body'] = r_heclip_body[2]
+        #row['t_mjd'] = clock_mjd
+        rows.append(row)
+    df = pd.DataFrame(rows)
+    return df
+
+
+
+def calc_eph_comet_backup(oe_Tp_jd,oe_epoch_name, oe_Node,oe_i, oe_w, oe_q, oe_e, from_date, to_date, step_dd_fh, desired_equinox):
+    """
+    Computes the ephemris for a comet
+
+    Args:
+        el : Elements of Orbit
+        from_date : 
+        to_date: 
+        desired_equinox: 
+
+    Returns :
+        A dataframe with the epehemris calculated.
+    """
+    t0_mjd = tc.jd2mjd(oe_Tp_jd)
+    # Ephemeris data
+    from_mjd = pipe(co.epochformat2jd(from_date),tc.jd2mjd)
+    to_mjd = pipe(co.epochformat2jd(to_date), tc.jd2mjd)
+    step = step_dd_fh[0] + step_dd_fh[1]/24.0
+    # Equinoxes
+    T_eq0 = co.T(oe_epoch_name) 
+    T_eqx = co.T(desired_equinox)
+
+    # Matrix for ecliptic system to account from the equinox correction 
+    mtx_prec_eclip = co.prec_mtx_eclip(T_eq0,T_eqx)
+    # mtx_U will tranform from orbital plane to the eclipt plane 
+    # and also adjust for the diferent equinoxes
+    mtx_U = mtx_prec_eclip.dot(co.mtx_gauss_vectors(oe_Node,oe_i,oe_w))
+    
+    # This matrix just depends on the desired equinox to calculate the oblitquity
+    mtx_equatFeclip = co.mtx_equatFeclip(desired_equinox)
+
+    rows = []
+    for clock_mjd in ut.xfrange(from_mjd, to_mjd, step):        
+        row = {}
+        row['date'] = pipe(clock_mjd,tc.mjd2jd,tc.jd2str_date)
+
+        # The geo-ecliptical polar coordinates of the sun referenced to the equinox of date
+        sun_eclip = pipe(clock_mjd, tc.mjd2jd,  pl.sun_geo_eclipt_position)
+
+        # Julian centuries from the clock time to the J2000 (51544.5 is the modified Julian date of J2000)
+        T = (clock_mjd - 51544.5) / 36525.0
+        # Equinox correction from "equinox of date" (so it depends on any different date) to J2000 (the desired one) is calculated
+        mtx_sun_prec_eclip = co.prec_mtx_eclip(T,T_eqx)
+
+        # vector earth to sun (polar format) corrected in equinox in the eclipt coordinate system
+        eclip_earth_sun = pipe(sun_eclip.v,co.cartesianFpolar,mtx_sun_prec_eclip.dot,co.polarFcartesian)
+        row['sun (dg)'] = f"{rad2deg(eclip_earth_sun[1]):03.1f}"
+
+        cart_r_eclip_earth_sun = co.cartesianFpolar(eclip_earth_sun)
+        
+        # position and velocity (cartesians) of the comet w.r.t the ecliptic
+        r, v = ob.keplerian_orbit (oe_q,oe_e,mtx_U,t0_mjd,clock_mjd)
+
+        cart_r_eclip_sun_comet = r
+        cart_v_eclip_sun_comet = v
+
+        eclip_sun_comet = co.polarFcartesian(cart_r_eclip_sun_comet)
+        row['l'] = f"{rad2deg(eclip_sun_comet[1]):03.1f}"
+        row['b'] = f"{rad2deg(eclip_sun_comet[2]):03.1f}"
+        row['r'] = f"{eclip_sun_comet[0]:03.4f}"
+
+        # The radio vector from the earth to the comet is calculated 
+        cart_r_eclip_earth_comet = cart_r_eclip_earth_sun + cart_r_eclip_sun_comet
+
+        r_AU = f"{np.linalg.norm(cart_r_eclip_earth_comet):03.4f}"        
+
+        # First-order light-time correction
+        factor = 0.00578 *  np.linalg.norm(cart_r_eclip_earth_comet)
+        cart_r_eclip_earth_comet -= factor*cart_v_eclip_sun_comet 
+        
+        #Once we have the carteasian coordinates of the comet from the earth,
+        #we change the coordinates 
+        equat_comet_v = pipe(cart_r_eclip_earth_comet, mtx_equatFeclip.dot, co.polarFcartesian)
+        row['ra'] = co.format_time(pipe(equat_comet_v[1],rad2deg,tc.dg2h,tc.h2hms))
+        row['dec'] = co.format_dg(*pipe(equat_comet_v[2],rad2deg,tc.dg2dgms))
+        row['r[AU]'] = r_AU
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+def grlb_equat_body_j2000_v2(jd):
+    # Orbital elemetes
+    
+    T1 = (tc.JD_B1950 - tc.JD_J2000)/36525.0
+    T2 = 0.0
+    Omega, i, omega = deg2rad(58.14397), deg2rad(162.23932), deg2rad(111.84658)    
+    e = 0.9672725
+    q = 0.5870992
+    a = q / (1-e)
+    Tp_jd = tc.datefd2jd(1986,2,9.43867)
+
+     # using the ecliptic at J2000 (T=0)
+    #print (T2, T1, Omega, i, omega)
+    mtx_equat_PQR =  multi_dot([mtx_equatFeclip(T2),
+                               co.prec_mtx_eclip(T1,T2),
+                               mtx_gauss_vectors(Omega, i, omega)                                                          
+                               ])
+
+    #mtx_equat_PQR = mtx_equatFeclip(0).dot(mtx_gauss_vectors(Omega, i, omega))                              
+    gxyz_equat_sun = gxyz_equat_sun_j2000(jd)   
+
+
+    # First try to calculate tau
+    M = ob.calc_M(jd, Tp_jd, a)
+    M = reduce_rad(M,True)
+    xyz, _ = ob.elliptic_orbit(ob.next_E, M, a, e)
+    hxyz_equat_body = mtx_equat_PQR.dot(xyz)
+    gxyz_equat_body = gxyz_equat_sun + hxyz_equat_body
+    tau = np.linalg.norm(gxyz_equat_body)*0.0057755183
+
+    # Second try using tau
+    M = ob.calc_M(jd-tau, Tp_jd, a)
+    M = reduce_rad(M,True)
+    print (M)
+    xyz,v = ob.elliptic_orbit(ob.next_E, M, a, e)
+    hxyz_equat_body = mtx_equat_PQR.dot(xyz)    
+    gxyz_equat_body = gxyz_equat_sun + hxyz_equat_body
+    return Coord(polarFcartesian(gxyz_equat_body),'', EQUAT2_TYPE)    
+
+
+def change_equinox_angles(Omega_0, i_0, omega_0, T1, T2):
+    
+    n, PPI, p = co.n_PPI_p(T1,T2)
+    psi = PPI + p
+    A = sin (i_0) * sin(Omega_0 - PPI)
+    B = -sin(n)*cos(i_0) + cos(n)*sin(i_0)*cos(Omega_0-PPI)
+    i = arcsin(sqrt(pow(A,2)+pow(B,2)))
+    #p_rad(i)
+    Omega = arctan2(A,B)+psi
+    #p_rad(Omega)
+    C = -sin(n) * sin(Omega_0-PPI)
+    D = sin(i_0)*cos(n) - cos(i_0)*sin(n)*cos(Omega_0-PPI)
+    dw = arctan2(C,D)
+    omega = omega_0 + dw
+    #p_rad(omega)
+    return Omega, i, omega
+
+    
+
+
+def kk(jd):
+    T = (jd - JD_J2000)/36525.0
+    obliq = obliquity(0)
+    # Orbital elemetes
+    Omega = deg2rad(334.75006)
+    i = deg2rad(11.94524)
+    omega = deg2rad(186.23352)
+    #Tp = "1990.10.28.54502"
+    Tp_jd = tc.datefd2jd(1990,10,28.54502)
+    e = 0.8502196
+    a = 2.2091404
+
+    F = cos (Omega)
+    G = sin(Omega) * cos (obliq)
+    H = sin(Omega) * sin (obliq)
+    P = -sin(Omega) * cos(i)
+    Q = cos (Omega)*cos(i)*cos(obliq) - sin (i) * sin(obliq)
+    R = cos (Omega)*cos(i)*sin(obliq) + sin (i) * cos(obliq)
+    print (pow(F,2)+pow(G,2)+pow(H,2))
+    print (pow(P,2)+pow(Q,2)+pow(R,2))
+    A = arctan2(F,P)
+    p_rad(A)
+    B = arctan2(G,Q)
+    C = arctan2(H,R)
+    a1 = sqrt(pow(F,2)+pow(P,2))
+    b = sqrt(pow(G,2)+pow(Q,2))
+    c = sqrt(pow(H,2)+pow(R,2))
+    gxyz_equat_sun = g_xyz_equat_sun_j2000(jde)    
+    M = ob.calc_M(jd, Tp_jd, a)
+    xyz,v = ob.elliptic_orbit(ob.next_E, M, a, e)
+    r,t_ano,_ = polarFcartesian(xyz)
+
+    hxyz_equat_body = np.array([r*a1*sin(A+omega+t_ano), r*b*sin(B+omega+t_ano), r*c*sin(C+omega+t_ano)])    
+    gxyz_equat_body = gxyz_equat_sun + hxyz_equat_body
+
+    tau = np.linalg.norm(gxyz_equat_body)*0.0057755183
+    M = ob.calc_M(jd-tau, Tp_jd, a)
+    xyz, _ = ob.elliptic_orbit(ob.next_E, M, a, e)
+    
+    r,t_ano,_ = polarFcartesian(xyz)
+    hxyz_equat_body = np.array([r*a1*sin(A+omega+t_ano), r*b*sin(B+omega+t_ano), r*c*sin(C+omega+t_ano)])
+    
+    gxyz_equat_body = gxyz_equat_sun + hxyz_equat_body
+    return Coord(polarFcartesian(gxyz_equat_body),'', EQUAT2_TYPE)
+
+
+
+def vsop_pos_v2(jde, l_series, b_series, r_series):
+    tau = (jde- 2451545.0) / 365250.0
+    func = partial (calc_series,tau)
+    res_series = map(func, l_series)    
+    L = reduce_rad(vsop_pol(*res_series,tau),True)
+    p_rad(L)
+
+    res_series = map(func, b_series)    
+    B = reduce_rad(vsop_pol(*res_series,tau))
+    p_rad(B)
+
+    res_series = map(func, r_series)
+    R = vsop_pol(*res_series,tau)
+    return np.array([R,L,B])
+
+
+
+"""
+This module contains functions related to orbit calculations
+"""
+# Standard library imports
+from typing import Any,Dict,List,Tuple,Sequence
+#https://mypy.readthedocs.io/en/stable/cheat_sheet_py3.html
+
+from datetime import datetime
+from functools import partial
+from collections import namedtuple
+from math import isclose
+import sys
+
+# Third party imports
+import pandas as pd
+import numpy as np
+from numpy import sin, cos, tan, arcsin, arccos, arctan2, arctan, sqrt,cosh,sinh,deg2rad,rad2deg, sqrt
+from numpy.linalg import norm
+import toolz as tz
+# Using Newton-Ramson method
+
+from scipy.integrate import solve_ivp    
+from toolz import pipe, compose
+from myastro.cluegen import Datum
+
+
+# Local application imports
+from myastro import timeutil as tc
+from myastro  import coord as co
+from myastro  import util as ut
+from myastro  import planets as pl
+from myastro import orbit as ob
+from myastro import data_catalog as dc
+from myastro import perturb as per
+from myastro.coord import as_str, Coord, cartesianFpolar, polarFcartesian,EQUAT2_TYPE
+
+from myastro.log import get_logger
+logger = get_logger(__file__.split('/')[-1])
+
+def step_from_str(step_str):
+    toks = step_str.split(' ')
+    if len(toks) ==1 :
+        return float(toks[0])
+    else :        
+        return float(toks[0])+float(toks[1])/24.0
+
+class EphemrisInput:
+    def __init__(self, from_date="", to_date="", step_dd_hh_hhh="", equinox_name=""):
+        self.from_date = from_date
+        self.to_date = to_date
+        self.from_mjd = pipe(tc.epochformat2jd(from_date),tc.jd2mjd)
+        self.to_mjd = pipe(tc.epochformat2jd(to_date), tc.jd2mjd)
+        self.eqx_name = equinox_name
+        self.T_eqx = tc.T(equinox_name)
+        self.step = step_from_str(step_dd_hh_hhh)
+
+    def __str__(self):
+        s = []
+        s.append(f'     Equinox name: {self.eqx_name}')
+        s.append(f'            T eq0: {self.T_eqx}')
+        s.append(f'        From date: {self.from_date}')
+        s.append(f'          To date: {self.to_date}')
+        s.append(f'         From MJD: {self.from_mjd}')
+        s.append(f'           To MJD: {self.to_mjd}')
+        s.append(f'      Step (days): {self.step}')
+        return '\n'.join(s)    
+
+
+
+def calc_eph_minor_body_perturbed (body_elms, eph):
+    # This matrix just depends on the desired equinox to calculate the obliquity
+    # to pass from ecliptic coordinate system to equatorial
+    mtx_equatFeclip = co.mtx_equatFeclip(eph.T_eqx)
+
+    T_J2000 = 0.0    
+    prec_mtx_J2000_Teq = co.mtx_eclip_prec(T_J2000,eph.T_eqx)
+    # the PQR mtx is preccesed from equinox of body object to the desired equinox 
+    #T = (body_elms.epoch_mjd - tc.MDJ_J2000) / 36525.0
+    mtx_PQR_J2000 = co.mtx_eclip_prec(body_elms.T_eqx0, T_J2000).dot(body_elms.mtx_PQR)
+    #mtx_PQR_J2000 = co.prec_mtx_eclip(T, T_J2000).dot(body_elms.mtx_PQR)
+    mtx_PQR_J2000_inv = np.linalg.inv(mtx_PQR_J2000)
+
+    # The initial conditions for doing the integration is calculated, i.e.,
+    # the r,v of the body at its epoch (in the example of Ceres, the epoch of 
+    # book that epoch  is 1983/09/23.00)
+
+    # The integration is done in the ecliptic plane
+    if body_elms.epoch_mjd < eph.from_mjd :
+        #The first, propagate the (r,v) state vector from epoch of the body ("1983.09.23.0") 
+        #to the begin of the ephemeris (elm.epoch_mjd)
+        #The second, integrate all the ephemeris time interval [eph.from_mjd, eph.to_mjd] 
+        initial_mjd = body_elms.epoch_mjd        
+        r0, v0 = ob.elliptic_orbit(ob.next_E, body_elms.M, body_elms.a, body_elms.e)
+    else :
+        #The integration is done basically in the ephemeris period so
+        # we need to calculate the mean anomaly at the time of the ephemeris
+        initial_mjd = eph.from_mjd - 1*eph.step
+        M = ob.calc_M_by_M0(initial_mjd, body_elms.epoch_mjd, body_elms.M, body_elms.period_in_days)    
+        r0, v0 = ob.elliptic_orbit(ob.next_E, M, body_elms.a, body_elms.e)
+
+    r0, v0 = map(mtx_PQR_J2000.dot, (r0, v0))
+    y0 = np.concatenate((r0, v0))        
+    t_sol = list(ut.xfrange(eph.from_mjd, eph.to_mjd, eph.step))
+    sol = ob.do_integration(ob.my_f, y0, initial_mjd, t_sol[-1], t_sol)       
+    
+    # The first of the solution because we set the t_eval range is the start of the ephemeris period
+    r = prec_mtx_J2000_Teq.dot(sol.y[:,0][:3])
+    v = prec_mtx_J2000_Teq.dot(sol.y[:,0][3:6])
+
+    # Osculating orbital parameters at the beginning of the ephemeris
+    print (ob.calc_osculating_orb_elmts(r,v,sol.t[0],eph.eqx_name))
+    #print (sol.t)
+
+    rows = []
+    for idx, clock_mjd in enumerate(sol.t) :  
+        row = {}
+        row['date'] = pipe(clock_mjd, tc.mjd2jd, tc.jd2str_date)
+
+        # Because the integration is done in the ecliptic coordinate systme
+        # the solution are already in that coordinate system so we just 
+        # need to move to the T_eq
+        # Heliocentric coordinates from J2000 to equinox T_eqx
+        r, v = (sol.y[:,idx][:3], sol.y[:,idx][3:6])
+        r_plane = mtx_PQR_J2000_inv.dot(r)
+
+        r_heclip_body, v_heclip_body = map(prec_mtx_J2000_Teq.dot, (r,v))
+        
+        # The geo-ecliptical polar coordinates of the sun referenced to the equinox of date
+        sun_eclip = pipe(clock_mjd, tc.mjd2jd,  pl.sun_geclipt_position)
+
+        T = (clock_mjd - tc.MDJ_J2000) / 36525.0
+               
+        # Equinox correction from "equinox of date" (so it depends on any different date) to J2000 (the desired one) is calculated
+        
+        # vector earth to sun (polar format) corrected in equinox in the eclipt coordinate system
+        eclip_earth_sun = pipe(sun_eclip.v, co.cartesianFpolar, co.mtx_eclip_prec(T,eph.T_eqx).dot, co.polarFcartesian)
+    
+        row['sun (dg)'] = f"{rad2deg(eclip_earth_sun[1]):03.1f}"
+
+        heclip_body = co.polarFcartesian(r_heclip_body)
+
+        row['l'] = f"{rad2deg(heclip_body[1]):03.1f}"
+        row['b'] = f"{rad2deg(heclip_body[2]):03.1f}"
+        row['r'] = f"{heclip_body[0]:03.4f}"
+
+        r_geclip_sun = co.cartesianFpolar(eclip_earth_sun)        
+        r_geclip_body = r_geclip_sun + r_heclip_body        
+
+        r_AU = f"{norm(r_geclip_body):03.4f}"        
+
+        dist = norm(r_geclip_body)
+        fac = 0.00578*dist
+        r_geclip_body -= fac*v_heclip_body
+        # Polar equatorial coordinates of the object
+        equat_body = pipe(r_geclip_body, mtx_equatFeclip.dot, co.polarFcartesian)
+        row['ra'] = co.format_time(pipe(equat_body[1],rad2deg,tc.dg2h,tc.h2hms))
+        row['dec'] = co.format_dg(*pipe(equat_body[2],rad2deg,tc.dg2dgms))
+        row['r[AU]'] = r_AU
+        #row['x_plane_body'] = r_plane[0]
+        #row['y_plane_body'] = r_plane[1]
+        #row['z_plane_body'] = r_plane[2]
+        #row['r2'] = norm(r_plane)
+        #row['t_mjd'] = clock_mjd
+        rows.append(row)
+    df = pd.DataFrame(rows)
+    return df
+
+
+def test_1():
+# Read Orbital elements for Ceres
+    CERES = dc.BodyElems(name="Ceres",
+                   epoch_name="1983.09.23.0",
+                   a = 2.7657991,
+                   e = 0.0785650,
+                   i_dg = 10.60646,
+                   Node_dg = 80.05225,
+                   w_dg = 73.07274,
+                   M_dg = 174.19016,
+                   equinox_name = "1950.0")
+    
+    #print ("Ephemeris Data:")
+    eph = EphemrisInput(from_date="1992.06.27.0",
+                        to_date = "1992.07.25.0",
+                        step_dd_hh_hhh = "2 00.0",
+                        equinox_name = "J2000")
+    #print (dc.APOFIS)
+
+    df = calc_eph_minor_body_perturbed(CERES, eph)
+    print (df.head(5))
+
+
+def calc_eph_comet(body_elms, eph):
+    """
+    Computes the ephemris for a comet
+
+    Args:
+        el : Elements of Orbit
+        from_date : 
+        to_date: 
+        desired_equinox: 
+
+    Returns :
+        A dataframe with the epehemris calculated.
+    """
+
+    # the PQR mtx of the body elemts is preccesed from equinox of body object to the desired equinox 
+    mtx_PQR_Teqx = co.mtx_eclip_prec(body_elms.T_eqx0, eph.T_eqx).dot(body_elms.mtx_PQR)        
+    #mtx_PQR_Teqx = body_elms.mtx_PQR
+    # This matrix just depends on the desired equinox to calculate the oblitquity
+    mtx_equatFeclip = co.mtx_equatFeclip(eph.T_eqx)
+
+    rows = []
+    for clock_mjd in ut.xfrange(eph.from_mjd, eph.to_mjd, eph.step):        
+        row = {}
+        row['date'] = pipe(clock_mjd,tc.mjd2jd, tc.jd2str_date)
+
+        # The geo-ecliptic polar coordinates of the sun referenced to the equinox of date
+        sun_eclip = pipe(clock_mjd, tc.mjd2jd,  pl.sun_geclipt_position)
+        #sun_eclip = pipe(clock_mjd, tc.mjd2jd,  per.sun_geo_eclipt_position_v2)
+
+        # Julian centuries from the clock time to the J2000 (51544.5 is the modified Julian date of J2000)
+        T = (clock_mjd - tc.MDJ_J2000) / 36525.0
+
+        print (co.as_str(sun_eclip))
+        print (sun_eclip)
+
+        # Equinox correction from "equinox of date" (so it depends on any different date) to J2000 (the desired one) is calculated
+        # vector earth to sun (polar format) corrected in equinox in the eclipt coordinate system
+        
+        eclip_earth_sun = pipe(sun_eclip.v,
+                               co.cartesianFpolar,
+                               co.mtx_eclip_prec(T,eph.T_eqx).dot,
+                               co.polarFcartesian)
+
+        print ("\n")
+        print (rad2deg(eclip_earth_sun[1]))
+        print (rad2deg(eclip_earth_sun[2]))
+        print (eclip_earth_sun[0])
+
+
+        row['sun (dg)'] = f"{rad2deg(eclip_earth_sun[1]):03.1f}"
+
+        r_geclip_sun = co.cartesianFpolar(eclip_earth_sun)
+                
+        # position and velocity (cartesians) of the comet w.r.t the ecliptic
+        r_heclip_body, v_heclip_body = ob.h_xyz_eclip_keplerian_orbit (body_elms.q, body_elms.e,mtx_PQR_Teqx, body_elms.tp_mjd, clock_mjd)
+
+        heclip_body = co.polarFcartesian(r_heclip_body)
+        row['l'] = f"{rad2deg(heclip_body[1]):03.1f}"
+        row['b'] = f"{rad2deg(heclip_body[2]):03.1f}"
+        row['r'] = f"{heclip_body[0]:03.4f}"
+
+        # The radio vector from Earth to the body is calculated 
+        r_geclip_body = r_geclip_sun + r_heclip_body
+
+        r_earth_AU = f"{norm(r_geclip_body):03.4f}"        
+        r_sun_AU = f"{norm(r_heclip_body):03.4f}"        
+        r_gsun_AU = f"{norm(r_geclip_sun):03.4f}"        
+
+        # First-order light-time correction
+        factor = 0.00578 * norm(r_geclip_body)
+
+        r_geclip_body -= factor*v_heclip_body
+
+        print ("\n")
+        kk1 = co.polarFcartesian(r_geclip_body)
+        print (rad2deg(kk1[1]))
+        print (rad2deg(kk1[2]))
+        print (kk1[0])
+        
+        #Once we have the carteasian coordinates of the body from Earth,
+        #we change the coordinates 
+        equat_body = pipe(r_geclip_body, mtx_equatFeclip.dot, co.polarFcartesian)
+
+        #print ("\n")
+        #print (rad2deg(equat_body[1]))
+        #print (rad2deg(equat_body[2]))
+        #print (equat_body[0])
+
+        #mtx = co.prec_mtx_equat(tc.T("J2000"),tc.T("1985.11.15.0"))
+        #equat_body = pipe(equat_body,cartesianFpolar,mtx.dot,polarFcartesian)
+
+        row['ra'] = co.format_time(pipe(equat_body[1],rad2deg,tc.dg2h,tc.h2hms))
+        row['dec'] = co.format_dg(*pipe(equat_body[2],rad2deg,tc.dg2dgms))
+        row['r [AU]'] = r_earth_AU
+        #row['r_sun[AU]'] = r_sun_AU
+        #row['r_gsun_AU[AU]'] = r_gsun_AU
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def test_2():
+    halley = dc.CometElms(name="Halley",
+                q = 0.5870992,
+                e = 0.9672725,
+                i_dg = 162.23932,
+                Node_dg = 58.14397,
+                w_dg = 111.84658,
+                #tp_str = "19860209.44",                
+                tp_str = "19860209.43867",
+                equinox_name = "1950.0")            
+
+    HALLEY = dc.CometElms(name="1P/Halley",
+                epoch_mjd=None ,
+                q =  0.5870992 ,
+                e = 0.9672725 ,
+                i_dg = 162.23932 ,
+                Node_dg = 58.14397 ,
+                w_dg = 111.84658 ,
+                tp_str = "19860209.44",
+                equinox_name = "B1950")
+    """
+    elm1 = dc.CometElms(name="Halley",
+                q = 0.5870992,
+                e = 0.9673,
+                i_dg = 162.2384,
+                Node_dg = 58.154,
+                w_dg = 111.857,
+                tp_str = "19860209.44",                
+                equinox_name = "1986.02.09.44")
+
+    """
+    #elm2 = dc.read_comet_elms_for("1P/Halley", dc.DF_COMETS)
+    
+    
+    #print (elm1)
+    #print (elm2)
+    eph = EphemrisInput(from_date="2020.10.15.0",
+                        to_date = "2020.12.25.0",
+                        step_dd_hh_hhh = "10 00.0",
+                        equinox_name = "J2000")
+    #print (dc.APOFIS)
+
+    #df = calc_eph_minor_body_perturbed(dc.APOFIS, eph)
+
+    eph1 = EphemrisInput(from_date="1985.11.15.0",
+                        to_date = "1986.02.01.0",
+                        step_dd_hh_hhh = "10 00.0",
+                        equinox_name = "J2000")
+
+    eph2 = EphemrisInput(from_date="2020.10.15.0",
+                        to_date = "2020.12.25.0",
+                        step_dd_hh_hhh = "10 00.0",
+                        equinox_name = "J2000")                        
+    
+    eph3 = EphemrisInput(from_date="1984.1.1",
+                        to_date = "1984.2.0",
+                        step_dd_hh_hhh = "2 00.0",
+                        equinox_name = "J2000")                        
+
+
+    print (HALLEY.mtx_PQR)
+
+    df = calc_eph_comet(HALLEY, eph1)
+    print (df.head())
+
+
+def test_3():
+    jd = tc.datetime2jd(1998,7,27,0,0,0)
+    #jd = tc.JD_J2000
+    clock_mjd = tc.jd2mjd(jd)
+    mtx_equatFeclip = co.mtx_equatFeclip("J2000")
+    T = (clock_mjd - tc.MDJ_J2000) / 36525.0
+    eclip_sun2 = per.sunPos(T)
+    equat_sun2 = pipe(eclip_sun2.v, cartesianFpolar, mtx_equatFeclip.dot, polarFcartesian)
+    equat_sun2 = Coord(equat_sun2 ,'J2000', EQUAT2_TYPE)
+    print (T)
+    print (as_str(eclip_sun2))
+    print (as_str(equat_sun2))    
+
+def test_4():
+    jd = tc.datetime2jd(1992,10,13,0,0,0)
+    sun_eclip = pl.sun_geclipt_position(jd)
+    T_eq0 = (jd - tc.JD_J2000)/36525.0
+    T_eqx = (jd - tc.JD_B1950)/36525.0
+    eclip_earth_sun = pipe(sun_eclip.v,
+                               co.cartesianFpolar,
+                               co.mtx_eclip_prec(T_eq0,T_eqx).dot)
+                               
+    print (eclip_earth_sun)
+
+"""
+This module contains functions related to Sun and planets
+"""
+# Standard library imports
+from typing import Any,Dict,List,Tuple,Sequence
+#https://mypy.readthedocs.io/en/stable/cheat_sheet_py3.html
+
+from datetime import datetime
+from functools import partial
+from toolz import pipe, compose
+
+# Third party imports
+import numpy as np
+from numpy import sin, cos, tan, arcsin, arccos, arctan2, arctan, sqrt,cosh,sinh,deg2rad,rad2deg
+import toolz as tz
+
+# Local application imports
+from myastro import timeutil as tc
+from myastro  import coord as co
+from myastro  import orbit as ob
+from myastro import sun_position as su
+
+from myastro.perturb import sunPos
+
+
+from myastro.timeutil import  PI_HALF, PI, TWOPI
+from myastro.coord import as_str, Coord, ECLIP_TYPE
+
+from myastro.log import get_logger
+logger = get_logger(__file__.split('/')[-1])
+
+# epg_sun return degrees
+epsg_sun = partial(tc.polynomial, 279.6966778, 36000.76892, 0.0003025, 0, 0)
+
+# wg_sun return degrees
+wg_sun = partial(tc.polynomial, 281.2208444, 1.719175, 0.000452778, 0, 0)
+
+e_sun = partial(tc.polynomial, 0.01675104, -0.0000418, -0.000000126, 0, 0)
+
+
+
+def sun_geclipt_position (at_jd : float) -> Tuple :
+    T = (at_jd - tc.JD_J2000) / 36525.0
+    if T > 0 :
+        return sun_geo_eclipt_position_v2(at_jd)
+    else :
+        return sun_geo_eclipt_position_v1(at_jd)
+
+
+def sun_geo_eclipt_position_v1 (at_jd : float) -> Tuple :
+    """ 
+    Computes the sun position in geo ecliptic coordinates in the point time
+    determined the julian day.
+    This method has been taked from the book Practical Astronomy with your 
+    calculator Pg 105.
+
+    The epoch chosen for all the calculation is 2010.0 (2010 January 0.0)
+    To calculate the corrections to epsg, e, wg, the Julian centuries from 
+    1900 is used (2415020.0)
+
+    Args:
+        at_jd : Julian day at which the position of the sun wants to be known
+        
+    Returns :
+        A coord object
+    """
+    
+    T = (at_jd - 2415020.0)/36525.0
+    #T = (at_jd - tc.JD_J2000)/36525.0
+    #print ("T:",T)
+    # First, the corrections are calculated 
+    epsg = pipe(epsg_sun(T),tc.norm_dg)
+    wg = pipe(wg_sun(T),tc.norm_dg)    
+    e = e_sun(T)
+    M_sun = tc.norm_dg(epsg-wg)
+    if M_sun < 0 :
+        M_sun += 360
+    # The kepler ecuation is solved using the mean anomaly
+    e_anomaly = ob.solve_ke_newton(e, ob.next_E, deg2rad(M_sun))
+    # Once we have the e_anomaly, the true anomaly is calculated the tan/2 formulae
+    t_anomaly = pipe(2*arctan(ob.half_tan_t_anomaly(e,e_anomaly)),rad2deg)
+    if t_anomaly < 0:
+        t_anomaly += 360
+    lon_sun = tc.norm_dg(t_anomaly + wg)    
+    # This is the sun's geocentric ecliptic longitude 
+    return Coord(np.array([1,deg2rad(lon_sun),0]),'date_equinox',ECLIP_TYPE)
+
+def sun_geo_eclipt_position_v2 (at_jd :float) -> Tuple :
+    T = (at_jd - tc.JD_J2000) / 36525.0
+    return sunPos(T)
+
+
+def sun_geo_eclipt_position_v3 (at_jd : float) -> Tuple :    
+    jce = su._sp.julian_century(at_jd)
+    jme = su._sp.julian_millennium(jce)
+    helio_pos = su._sp.heliocentric_position(jme)
+    delta_psi, epsilon = su._sp.nutation_obliquity(jce) 
+    llambda, beta = su._sp.sun_longitude(helio_pos, delta_psi) 
+    if beta < 0 :
+        beta += 360 
+    return Coord(np.array([1,deg2rad(llambda), deg2rad(beta)]),'date_equinox',ECLIP_TYPE)
+
+
+if __name__ == "__main__":    
+    #TODO pending to add these two as tests
+    """
+    jd_2003_Jul_27 = tc.datefd2jd(2003,7,27)    
+    eclip_sun = sun_geo_eclipt_position(jd_2003_Jul_27)
+    print (as_str(eclip_sun))
+
+    jd_1988_Jul_27 = tc.datefd2jd(1988,7,27)    
+    eclip_sun = sun_geo_eclipt_position(jd_1988_Jul_27)
+    print (as_str(eclip_sun))
+    """
+    """
+    #jd_today = tc.datetime2jd(2020,5,9,19,40,00)
+    jd_today = tc.datetime2jd(1990,4,19,0,0,00)
+    eclip_sun = sun_geo_eclipt_position(jd_today)
+    eclip_sun_fixed = co.change_equinox_eclip("2010.00","J2000",eclip_sun) 
+    print (as_str(eclip_sun))
+    print (as_str(eclip_sun_fixed))
+    """
+    jd = tc.datefd2jd(2003,7,27)    
+    #print (sun_geo_eclipt_position(jd))
+    print (sun_geo_eclipt_position_v2(jd))
+
+
+
+# The MIT License (MIT)
+# 
+# Copyright (c) 2016 Samuel Bear Powell
+# 
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+# 
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+import numpy as np
+from datetime import datetime
+from numpy import sin, cos, deg2rad, rad2deg, arctan, arctan2, sqrt, arcsin
+
+class _sp:
+    @staticmethod
+    def calendar_time(dt):
+        try:
+            x = dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second, dt.microsecond
+            return x
+        except AttributeError:
+            try:
+                return _sp.calendar_time(datetime.utcfromtimestamp(dt)) #will raise OSError if dt is not acceptable
+            except:
+                raise TypeError('dt must be datetime object or POSIX timestamp')
+
+    @staticmethod
+    def julian_day(dt):
+        """Calculate the Julian Day from a datetime.datetime object in UTC"""
+        # year and month numbers
+        yr, mo, dy, hr, mn, sc, us = _sp.calendar_time(dt)
+        if mo <= 2:  # From paper: "if M = 1 or 2, then Y = Y - 1 and M = M + 12"
+            mo += 12
+            yr -= 1
+        # day of the month with decimal time
+        dy = dy + hr/24.0 + mn/(24.0*60.0) + sc/(24.0*60.0*60.0) + us/(24.0*60.0*60.0*1e6)
+        # b is equal to 0 for the julian calendar and is equal to (2- A +
+        # INT(A/4)), A = INT(Y/100), for the gregorian calendar
+        a = int(yr / 100)
+        b = 2 - a + int(a / 4)
+        jd = int(365.25 * (yr + 4716)) + int(30.6001 * (mo + 1)) + dy + b - 1524.5
+        return jd
+
+    @staticmethod
+    def julian_ephemeris_day(jd, deltat):
+        """Calculate the Julian Ephemeris Day from the Julian Day and delta-time = (terrestrial time - universal time) in seconds"""
+        return jd + deltat / 86400.0
+
+    @staticmethod
+    def julian_century(jd):
+        """Caluclate the Julian Century from Julian Day or Julian Ephemeris Day"""
+        return (jd - 2451545.0) / 36525.0
+
+    @staticmethod
+    def julian_millennium(jc):
+        """Calculate the Julian Millennium from Julian Ephemeris Century"""
+        return jc / 10.0
+
+    # Earth Periodic Terms
+    # Earth Heliocentric Longitude coefficients (L0, L1, L2, L3, L4, and L5 in paper)
+    _EHL_ = [#L0:
+                [(175347046, 0.0, 0.0), (3341656, 4.6692568, 6283.07585), (34894, 4.6261, 12566.1517),
+                (3497, 2.7441, 5753.3849), (3418, 2.8289, 3.5231), (3136, 3.6277, 77713.7715),
+                (2676, 4.4181, 7860.4194), (2343, 6.1352, 3930.2097), (1324, 0.7425, 11506.7698),
+                (1273, 2.0371, 529.691), (1199, 1.1096, 1577.3435), (990, 5.233, 5884.927),
+                (902, 2.045, 26.298), (857, 3.508, 398.149), (780, 1.179, 5223.694),
+                (753, 2.533, 5507.553), (505, 4.583, 18849.228), (492, 4.205, 775.523),
+                (357, 2.92, 0.067), (317, 5.849, 11790.629), (284, 1.899, 796.298),
+                (271, 0.315, 10977.079), (243, 0.345, 5486.778), (206, 4.806, 2544.314),
+                (205, 1.869, 5573.143), (202, 2.4458, 6069.777), (156, 0.833, 213.299),
+                (132, 3.411, 2942.463), (126, 1.083, 20.775), (115, 0.645, 0.98),
+                (103, 0.636, 4694.003), (102, 0.976, 15720.839), (102, 4.267, 7.114),
+                (99, 6.21, 2146.17), (98, 0.68, 155.42), (86, 5.98, 161000.69),
+                (85, 1.3, 6275.96), (85, 3.67, 71430.7), (80, 1.81, 17260.15),
+                (79, 3.04, 12036.46), (71, 1.76, 5088.63), (74, 3.5, 3154.69),
+                (74, 4.68, 801.82), (70, 0.83, 9437.76), (62, 3.98, 8827.39),
+                (61, 1.82, 7084.9), (57, 2.78, 6286.6), (56, 4.39, 14143.5),
+                (56, 3.47, 6279.55), (52, 0.19, 12139.55), (52, 1.33, 1748.02),
+                (51, 0.28, 5856.48), (49, 0.49, 1194.45), (41, 5.37, 8429.24),
+                (41, 2.4, 19651.05), (39, 6.17, 10447.39), (37, 6.04, 10213.29),
+                (37, 2.57, 1059.38), (36, 1.71, 2352.87), (36, 1.78, 6812.77),
+                (33, 0.59, 17789.85), (30, 0.44, 83996.85), (30, 2.74, 1349.87),
+                (25, 3.16, 4690.48)],
+            #L1:
+                [(628331966747, 0.0, 0.0), (206059, 2.678235, 6283.07585), (4303, 2.6351, 12566.1517),
+                (425, 1.59, 3.523), (119, 5.796, 26.298), (109, 2.966, 1577.344),
+                (93, 2.59, 18849.23), (72, 1.14, 529.69), (68, 1.87, 398.15),
+                (67, 4.41, 5507.55), (59, 2.89, 5223.69), (56, 2.17, 155.42),
+                (45, 0.4, 796.3), (36, 0.47, 775.52), (29, 2.65, 7.11),
+                (21, 5.34, 0.98), (19, 1.85, 5486.78), (19, 4.97, 213.3),
+                (17, 2.99, 6275.96), (16, 0.03, 2544.31), (16, 1.43, 2146.17),
+                (15, 1.21, 10977.08), (12, 2.83, 1748.02), (12, 3.26, 5088.63),
+                (12, 5.27, 1194.45), (12, 2.08, 4694), (11, 0.77, 553.57),
+                (10, 1.3, 3286.6), (10, 4.24, 1349.87), (9, 2.7, 242.73),
+                (9, 5.64, 951.72), (8, 5.3, 2352.87), (6, 2.65, 9437.76),
+                (6, 4.67, 4690.48)],
+            #L2:
+                [(52919, 0.0, 0.0), (8720, 1.0721, 6283.0758), (309, 0.867, 12566.152),
+                (27, 0.05, 3.52), (16, 5.19, 26.3), (16, 3.68, 155.42),
+                (10, 0.76, 18849.23), (9, 2.06, 77713.77), (7, 0.83, 775.52),
+                (5, 4.66, 1577.34), (4, 1.03, 7.11), (4, 3.44, 5573.14),
+                (3, 5.14, 796.3), (3, 6.05, 5507.55), (3, 1.19, 242.73),
+                (3, 6.12, 529.69), (3, 0.31, 398.15), (3, 2.28, 553.57),
+                (2, 4.38, 5223.69), (2, 3.75, 0.98)],
+            #L3:
+                [(289, 5.844, 6283.076), (35, 0.0, 0.0,), (17, 5.49, 12566.15),
+                (3, 5.2, 155.42), (1, 4.72, 3.52), (1, 5.3, 18849.23),
+                (1, 5.97, 242.73)],
+            #L4:
+               [(114, 3.142, 0.0), (8, 4.13, 6283.08), (1, 3.84, 12566.15)],
+            #L5:
+               [(1, 3.14, 0.0)]
+            ]
+
+    #Earth Heliocentric Longitude coefficients (B0 and B1 in paper)
+    _EHB_ = [ #B0:
+                [(280, 3.199, 84334.662), (102, 5.422, 5507.553), (80, 3.88, 5223.69),
+                (44, 3.7, 2352.87), (32, 4.0, 1577.34)],
+            #B1:
+                [(9, 3.9, 5507.55), (6, 1.73, 5223.69)]
+            ]
+
+    #Earth Heliocentric Radius coefficients (R0, R1, R2, R3, R4)
+    _EHR_ = [#R0:
+                [(100013989, 0.0, 0.0), (1670700, 3.0984635, 6283.07585), (13956, 3.05525, 12566.1517),
+                (3084, 5.1985, 77713.7715), (1628, 1.1739, 5753.3849), (1576, 2.8469, 7860.4194),
+                (925, 5.453, 11506.77), (542, 4.564, 3930.21), (472, 3.661, 5884.927),
+                (346, 0.964, 5507.553), (329, 5.9, 5223.694), (307, 0.299, 5573.143),
+                (243, 4.273, 11790.629), (212, 5.847, 1577.344), (186, 5.022, 10977.079),
+                (175, 3.012, 18849.228), (110, 5.055, 5486.778), (98, 0.89, 6069.78),
+                (86, 5.69, 15720.84), (86, 1.27, 161000.69), (85, 0.27, 17260.15),
+                (63, 0.92, 529.69), (57, 2.01, 83996.85), (56, 5.24, 71430.7),
+                (49, 3.25, 2544.31), (47, 2.58, 775.52), (45, 5.54, 9437.76),
+                (43, 6.01, 6275.96), (39, 5.36, 4694), (38, 2.39, 8827.39),
+                (37, 0.83, 19651.05), (37, 4.9, 12139.55), (36, 1.67, 12036.46),
+                (35, 1.84, 2942.46), (33, 0.24, 7084.9), (32, 0.18, 5088.63),
+                (32, 1.78, 398.15), (28, 1.21, 6286.6), (28, 1.9, 6279.55),
+                (26, 4.59, 10447.39)],
+            #R1:
+                [(103019, 1.10749, 6283.07585), (1721, 1.0644, 12566.1517), (702, 3.142, 0.0),
+                (32, 1.02, 18849.23), (31, 2.84, 5507.55), (25, 1.32, 5223.69),
+                (18, 1.42, 1577.34), (10, 5.91, 10977.08), (9, 1.42, 6275.96),
+                (9, 0.27, 5486.78)],
+            #R2:
+                [(4359, 5.7846, 6283.0758), (124, 5.579, 12566.152), (12, 3.14, 0.0),
+                (9, 3.63, 77713.77), (6, 1.87, 5573.14), (3, 5.47, 18849)],
+            #R3:
+                [(145, 4.273, 6283.076), (7, 3.92, 12566.15)],
+            #R4:
+                [(4, 2.56, 6283.08)]
+            ]
+
+    @staticmethod
+    def heliocentric_longitude(jme):
+        """Compute the Earth Heliocentric Longitude (L) in degrees given the Julian Ephemeris Millennium"""
+        #L5, ..., L0
+        Li = [sum(a*np.cos(b + c*jme) for a,b,c in abcs) for abcs in reversed(_sp._EHL_)]
+        L = np.polyval(Li, jme) / 1e8
+        L = np.rad2deg(L) % 360
+        return L
+    @staticmethod
+    def heliocentric_latitude(jme):
+        """Compute the Earth Heliocentric Latitude (B) in degrees given the Julian Ephemeris Millennium"""
+        Bi = [sum(a*np.cos(b + c*jme) for a,b,c in abcs) for abcs in reversed(_sp._EHB_)]
+        B = np.polyval(Bi, jme) / 1e8
+        B = np.rad2deg(B) % 360
+        return B
+    @staticmethod
+    def heliocentric_radius(jme):
+        """Compute the Earth Heliocentric Radius (R) in astronimical units given the Julian Ephemeris Millennium"""
+        Ri = [sum(a*np.cos(b + c*jme) for a,b,c in abcs) for abcs in reversed(_sp._EHR_)]
+        R = np.polyval(Ri, jme) / 1e8
+        return R
+    @staticmethod
+    def heliocentric_position(jme):
+        """Compute the Earth Heliocentric Longitude, Latitude, and Radius given the Julian Ephemeris Millennium
+            Returns (L, B, R) where L = longitude in degrees, B = latitude in degrees, and R = radius in astronimical units
+        """
+        return _sp.heliocentric_longitude(jme), _sp.heliocentric_latitude(jme), _sp.heliocentric_radius(jme)
+    @staticmethod
+    def geocentric_position(helio_pos):
+        """Compute the geocentric latitude (Theta) and longitude (beta) (in degrees) of the sun given the earth's heliocentric position (L, B, R)"""
+        L,B,R = helio_pos
+        th = L + 180
+        b = -B
+        return (th, b)
+
+    #Nutation Longitude and Obliquity coefficients (Y)
+    _NLOY_ = [(0,   0,   0,   0,   1), (-2,  0,   0,   2,   2), (0,   0,   0,   2,   2),
+              (0,   0,   0,   0,   2), (0,   1,   0,   0,   0), (0,   0,   1,   0,   0),
+              (-2,  1,   0,   2,   2), (0,   0,   0,   2,   1), (0,   0,   1,   2,   2),
+              (-2,  -1,  0,   2,   2), (-2,  0,   1,   0,   0), (-2,  0,   0,   2,   1),
+              (0,   0,   -1,  2,   2), (2,   0,   0,   0,   0), (0,   0,   1,   0,   1),
+              (2,   0,   -1,  2,   2), (0,   0,   -1,  0,   1), (0,   0,   1,   2,   1),
+              (-2,  0,   2,   0,   0), (0,   0,   -2,  2,   1), (2,   0,   0,   2,   2),
+              (0,   0,   2,   2,   2), (0,   0,   2,   0,   0), (-2,  0,   1,   2,   2),
+              (0,   0,   0,   2,   0), (-2,  0,   0,   2,   0), (0,   0,   -1,  2,   1),
+              (0,   2,   0,   0,   0), (2,   0,   -1,  0,   1), (-2,  2,   0,   2,   2),
+              (0,   1,   0,   0,   1), (-2,  0,   1,   0,   1), (0,   -1,  0,   0,   1),
+              (0,   0,   2,   -2,  0), (2,   0,   -1,  2,   1), (2,   0,   1,   2,   2),
+              (0,   1,   0,   2,   2), (-2,  1,   1,   0,   0), (0,   -1,  0,   2,   2),
+              (2,   0,   0,   2,   1), (2,   0,   1,   0,   0), (-2,  0,   2,   2,   2),
+              (-2,  0,   1,   2,   1), (2,   0,   -2,  0,   1), (2,   0,   0,   0,   1),
+              (0,   -1,  1,   0,   0), (-2,  -1,  0,   2,   1), (-2,  0,   0,   0,   1),
+              (0,   0,   2,   2,   1), (-2,  0,   2,   0,   1), (-2,  1,   0,   2,   1),
+              (0,   0,   1,   -2,  0), (-1,  0,   1,   0,   0), (-2,  1,   0,   0,   0),
+              (1,   0,   0,   0,   0), (0,   0,   1,   2,   0), (0,   0,   -2,  2,   2),
+              (-1,  -1,  1,   0,   0), (0,   1,   1,   0,   0), (0,   -1,  1,   2,   2),
+              (2,   -1,  -1,  2,   2), (0,   0,   3,   2,   2), (2,   -1,  0,   2,   2)]
+    #Nutation Longitude and Obliquity coefficients (a,b)
+    _NLOab_ = [(-171996, -174.2), (-13187, -1.6), (-2274, -0.2), (2062, 0.2), (1426, -3.4), (712, 0.1),
+               (-517, 1.2), (-386, -0.4), (-301, 0), (217, -0.5), (-158, 0), (129, 0.1),
+               (123, 0), (63,  0), (63,  0.1), (-59, 0), (-58, -0.1), (-51, 0),
+               (48,  0), (46,  0), (-38, 0), (-31, 0), (29,  0), (29,  0),
+               (26,  0), (-22, 0), (21,  0), (17,  -0.1), (16,  0), (-16, 0.1),
+               (-15, 0), (-13, 0), (-12, 0), (11,  0), (-10, 0), (-8,  0),
+               (7,   0), (-7,  0), (-7,  0), (-7,  0), (6,   0), (6,   0),
+               (6,   0), (-6,  0), (-6,  0), (5,   0), (-5,  0), (-5,  0),
+               (-5,  0), (4,   0), (4,   0), (4,   0), (-4,  0), (-4,  0),
+               (-4,  0), (3,   0), (-3,  0), (-3,  0), (-3,  0), (-3,  0),
+               (-3,  0), (-3,  0), (-3,  0)]
+    #Nutation Longitude and Obliquity coefficients (c,d)
+    _NLOcd_ = [(92025,   8.9), (5736,    -3.1), (977, -0.5), (-895,    0.5),
+               (54,  -0.1), (-7,  0), (224, -0.6), (200, 0),
+               (129, -0.1), (-95, 0.3), (0,   0), (-70, 0),
+               (-53, 0), (0,   0), (-33, 0), (26,  0),
+               (32,  0), (27,  0), (0,   0), (-24, 0),
+               (16,  0), (13,  0), (0,   0), (-12, 0),
+               (0,   0), (0,   0), (-10, 0), (0,   0),
+               (-8,  0), (7,   0), (9,   0), (7,   0),
+               (6,   0), (0,   0), (5,   0), (3,   0),
+               (-3,  0), (0,   0), (3,   0), (3,   0),
+               (0,   0), (-3,  0), (-3,  0), (3,   0),
+               (3,   0), (0,   0), (3,   0), (3,   0),
+               (3,   0)]
+
+    @staticmethod
+    def ecliptic_obliquity(jme, delta_epsilon):
+        """Calculate the true obliquity of the ecliptic (epsilon, in degrees) given the Julian Ephemeris Millennium and the obliquity"""
+        u = jme/10
+        e0 = np.polyval([2.45, 5.79, 27.87, 7.12, -39.05, -249.67, -51.38, 1999.25, -1.55, -4680.93, 84381.448], u)
+        e = e0/3600.0 + delta_epsilon
+        return e
+
+    @staticmethod
+    def nutation_obliquity(jce):
+        """compute the nutation in longitude (delta_psi) and the true obliquity (epsilon) given the Julian Ephemeris Century"""
+        
+        #mean elongation of the moon from the sun, in radians:
+        #x0 = 297.85036 + 445267.111480*jce - 0.0019142*(jce**2) + (jce**3)/189474
+        x0 = np.deg2rad(np.polyval([1./189474, -0.0019142, 445267.111480, 297.85036],jce))
+        #mean anomaly of the sun (Earth), in radians:
+        x1 = np.deg2rad(np.polyval([-1/3e5, -0.0001603, 35999.050340, 357.52772], jce))
+        #mean anomaly of the moon, in radians:
+        x2 = np.deg2rad(np.polyval([1./56250, 0.0086972, 477198.867398, 134.96298], jce))
+        #moon's argument of latitude, in radians:
+        x3 = np.deg2rad(np.polyval([1./327270, -0.0036825, 483202.017538, 93.27191], jce))
+        #Longitude of the ascending node of the moon's mean orbit on the ecliptic
+        # measured from the mean equinox of the date, in radians
+        x4 = np.deg2rad(np.polyval([1./45e4, 0.0020708, -1934.136261, 125.04452], jce))
+
+        x = (x0, x1, x2, x3, x4)
+
+        dp = 0.0
+        for y, ab in zip(_sp._NLOY_, _sp._NLOab_):
+            a,b = ab
+            dp += (a + b*jce)*np.sin(np.dot(x, y))
+        dp = np.rad2deg(dp)/36e6
+
+        de = 0.0
+        for y, cd in zip(_sp._NLOY_, _sp._NLOcd_):
+            c,d = cd
+            de += (c + d*jce)*np.cos(np.dot(x, y))
+        de = np.rad2deg(de)/36e6
+
+        e = _sp.ecliptic_obliquity(_sp.julian_millennium(jce), de)
+
+        return dp, e
+    
+    @staticmethod
+    def abberation_correction(R):
+        """Calculate the abberation correction (delta_tau, in degrees) given the Earth Heliocentric Radius (in AU)"""
+        return -20.4898/(3600*R)
+    
+    @staticmethod
+    def sun_longitude(helio_pos, delta_psi):
+        """Calculate the apparent sun longitude (lambda, in degrees) and geocentric longitude (beta, in degrees) given the earth heliocentric position and delta_psi"""
+        L,B,R = helio_pos
+        theta = L + 180 #geocentric latitude
+        beta = -B
+        ll = theta + delta_psi + _sp.abberation_correction(R)
+        return ll, beta
+    
+    @staticmethod
+    def greenwich_sidereal_time(jd, delta_psi, epsilon):
+        """Calculate the apparent Greenwich sidereal time (v, in degrees) given the Julian Day"""
+        jc = _sp.julian_century(jd)
+        #mean sidereal time at greenwich, in degrees:
+        v0 = (280.46061837 + 360.98564736629*(jd - 2451545) + 0.000387933*(jc**2) - (jc**3)/38710000) % 360
+        v = v0 + delta_psi*np.cos(np.deg2rad(epsilon))
+        return v
+    
+    @staticmethod
+    def sun_ra_decl(llambda, epsilon, beta):
+        """Calculate the sun's geocentric right ascension (alpha, in degrees) and declination (delta, in degrees)"""
+        l, e, b = map(np.deg2rad, (llambda, epsilon, beta))
+        alpha = np.arctan2(np.sin(l)*np.cos(e) - np.tan(b)*np.sin(e), np.cos(l)) #x1 / x2
+        alpha = np.rad2deg(alpha) % 360
+        delta = np.arcsin(np.sin(b)*np.cos(e) + np.cos(b)*np.sin(e)*np.sin(l))
+        delta = np.rad2deg(delta)
+        return alpha, delta
+    
+    @staticmethod
+    def sun_topo_ra_decl_hour(latitude, longitude, elevation, jd, delta_t = 0):
+        """Calculate the sun's topocentric right ascension (alpha'), declination (delta'), and hour angle (H')"""
+        
+        jde = _sp.julian_ephemeris_day(jd, delta_t)
+        jce = _sp.julian_century(jde)
+        jme = _sp.julian_millennium(jce)
+
+        helio_pos = _sp.heliocentric_position(jme)
+        R = helio_pos[-1]
+        phi, sigma, E = latitude, longitude, elevation
+        #equatorial horizontal parallax of the sun, in radians
+        xi = np.deg2rad(8.794/(3600*R)) #
+        #rho = distance from center of earth in units of the equatorial radius
+        #phi-prime = geocentric latitude
+        #NB: These equations look like their based on WGS-84, but are rounded slightly
+        # The WGS-84 reference ellipsoid has major axis a = 6378137 m, and flattening factor 1/f = 298.257223563
+        # minor axis b = a*(1-f) = 6356752.3142 = 0.996647189335*a
+        u = np.arctan(0.99664719*np.tan(phi)) #
+        x = np.cos(u) + E*np.cos(phi)/6378140 #rho sin(phi-prime)
+        y = 0.99664719*np.sin(u) + E*np.sin(phi)/6378140 #rho cos(phi-prime)
+
+        delta_psi, epsilon = _sp.nutation_obliquity(jce) #
+
+        llambda, beta = _sp.sun_longitude(helio_pos, delta_psi) #
+        
+        alpha, delta = _sp.sun_ra_decl(llambda, epsilon, beta) #
+
+        v = _sp.greenwich_sidereal_time(jd, delta_psi, epsilon) #
+
+        H = v + longitude - alpha #
+        Hr, dr = map(np.deg2rad,(H,delta))
+
+        dar = np.arctan2(-x*np.sin(xi)*np.sin(Hr), np.cos(dr)-x*np.sin(xi)*np.cos(Hr))
+        delta_alpha = np.rad2deg(dar) #
+        
+        alpha_prime = alpha + delta_alpha #
+        delta_prime = np.rad2deg(np.arctan2((np.sin(dr) - y*np.sin(xi))*np.cos(dar), np.cos(dr) - y*np.sin(xi)*np.cos(Hr))) #
+        H_prime = H - delta_alpha #
+
+        return alpha_prime, delta_prime, H_prime
+    
+    @staticmethod
+    def sun_topo_azimuth_zenith(latitude, delta_prime, H_prime, temperature=14.6, pressure=1013):
+        """Compute the sun's topocentric azimuth and zenith angles
+        azimuth is measured eastward from north, zenith from vertical
+        temperature = average temperature in C (default is 14.6 = global average in 2013)
+        pressure = average pressure in mBar (default 1013 = global average)
+        """
+        phi = np.deg2rad(latitude)
+        dr, Hr = map(np.deg2rad,(delta_prime, H_prime))
+        P, T = pressure, temperature
+        e0 = np.rad2deg(np.arcsin(np.sin(phi)*np.sin(dr) + np.cos(phi)*np.cos(dr)*np.cos(Hr)))
+        tmp = np.deg2rad(e0 + 10.3/(e0+5.11))
+        delta_e = (P/1010.0)*(283.0/(273+T))*(1.02/(60*np.tan(tmp)))
+        e = e0 + delta_e
+        zenith = 90 - e
+
+        gamma = np.rad2deg(np.arctan2(np.sin(Hr), np.cos(Hr)*np.sin(phi) - np.tan(dr)*np.cos(phi))) % 360
+        Phi = (gamma + 180) % 360 #azimuth from north
+        return Phi, zenith
+
+    @staticmethod
+    def norm_lat_lon(lat,lon):
+        if lat < -90 or lat > 90:
+            #convert to cartesian and back
+            x = cos(deg2rad(lon))*cos(deg2rad(lat))
+            y = sin(deg2rad(lon))*cos(deg2rad(lat))
+            z = sin(deg2rad(lat))
+            r = sqrt(x**2 + y**2 + z**2)
+            lon = rad2deg(arctan2(y,x)) % 360
+            lat = rad2deg(arcsin(z/r))
+        elif lon < 0 or lon > 360:
+            lon = lon % 360
+        return lat,lon
+
+    @staticmethod
+    def topo_pos(t,lat,lon,elev,temp,press,dt):
+        """compute RA,dec,H, all in degrees"""
+        lat,lon = _sp.norm_lat_lon(lat,lon)
+        jd = _sp.julian_day(t)
+        RA, dec, H = _sp.sun_topo_ra_decl_hour(lat, lon, elev, jd, dt)
+        return RA, dec, H
+
+    @staticmethod
+    def pos(t,lat,lon,elev,temp,press,dt):
+        """Compute azimute,zenith,RA,dec,H all in degrees"""
+        lat,lon = _sp.norm_lat_lon(lat,lon)
+        jd = _sp.julian_day(t)
+        RA, dec, H = _sp.sun_topo_ra_decl_hour(lat, lon, elev, jd, dt)
+        azimuth, zenith = _sp.sun_topo_azimuth_zenith(lat, dec, H, temp, press)
+        return azimuth,zenith,RA,dec,H
+
+def julian_day(dt):
+    """Convert UTC datetimes or UTC timestamps to Julian days
+
+    Parameters
+    ----------
+    dt : array_like
+        UTC datetime objects or UTC timestamps (as per datetime.utcfromtimestamp)
+
+    Returns
+    -------
+    jd : ndarray
+        datetimes converted to fractional Julian days
+    """
+    dts = np.array(dt)
+    if len(dts.shape) == 0:
+        return _sp.julian_day(dt)
+
+    jds = np.empty(dts.shape)
+    for i,d in enumerate(dts.flat):
+        jds.flat[i] = _sp.julian_day(d)
+    return jds
+
+def arcdist(p0,p1,radians=False):
+    """Angular distance between azimuth,zenith pairs
+    
+    Parameters
+    ----------
+    p0 : array_like, shape (..., 2)
+    p1 : array_like, shape (..., 2)
+        p[...,0] = azimuth angles, p[...,1] = zenith angles
+    radians : boolean (default False)
+        If False, angles are in degrees, otherwise in radians
+
+    Returns
+    -------
+    ad :  array_like, shape is broadcast(p0,p1).shape
+        Arcdistances between corresponding pairs in p0,p1
+        In degrees by default, in radians if radians=True
+    """
+    #formula comes from translating points into cartesian coordinates
+    #taking the dot product to get the cosine between the two vectors
+    #then arccos to return to angle, and simplify everything assuming real inputs
+    p0,p1 = np.array(p0), np.array(p1)
+    if not radians:
+        p0,p1 = np.deg2rad(p0), np.deg2rad(p1)
+    a0,z0 = p0[...,0], p0[...,1]
+    a1,z1 = p1[...,0], p1[...,1]
+    d = np.arccos(np.cos(z0)*np.cos(z1)+np.cos(a0-a1)*np.sin(z0)*np.sin(z1))
+    if radians:
+        return d
+    else:
+        return np.rad2deg(d)
+
+def observed_sunpos(dt, latitude, longitude, elevation, temperature=None, pressure=None, delta_t=0, radians=False):
+    """Compute the observed coordinates of the sun as viewed at the given time and location.
+
+    Parameters
+    ----------
+    dt : array_like of datetime or float
+        UTC datetime objects or UTC timestamps (as per datetime.utcfromtimestamp) representing the times of observations
+    latitude, longitude : array_like of float
+        decimal degrees, positive for north of the equator and east of Greenwich
+    elevation : array_like of float
+        meters, relative to the WGS-84 ellipsoid
+    temperature : None or array_like of float, optional
+        celcius, default is 14.6 (global average in 2013)
+    pressure : None or array_like of float, optional
+        millibar, default is 1013 (global average in ??)
+    delta_t : array_like of float, optional
+        seconds, default is 0, difference between the earth's rotation time (TT) and universal time (UT)
+    radians : bool, optional
+        return results in radians if True, degrees if False (default)
+
+    Returns
+    -------
+    coords : ndarray, (...,2)
+        The shape of the array is parameters broadcast together, plus a final dimension for the coordinates.
+        coords[...,0] = observed azimuth angle, measured eastward from north
+        coords[...,1] = observed zenith angle, measured down from vertical
+    """
+    if temperature is None:
+        temperature = 14.6
+    if pressure is None:
+        pressure = 1013
+    
+    #6367444 = radius of earth
+    #numpy broadcasting
+    b = np.broadcast(dt,latitude,longitude,elevation,temperature,pressure,delta_t)
+    res = np.empty(b.shape+(2,))
+    res_vec = res.reshape((-1,2))
+    for i,x in enumerate(b):
+        res_vec[i] = _sp.pos(*x)[:2]
+    if radians:
+        res = np.deg2rad(res)
+    return res
+
+def topocentric_sunpos(dt, latitude, longitude, temperature=None, pressure=None, delta_t=0, radians=False):
+    """Compute the topocentric coordinates of the sun as viewed at the given time and location.
+
+    Parameters
+    ----------
+    dt : array_like of datetime or float
+        UTC datetime objects or UTC timestamps (as per datetime.utcfromtimestamp) representing the times of observations
+    latitude, longitude : array_like of float
+        decimal degrees, positive for north of the equator and east of Greenwich
+    elevation : array_like of float
+        meters, relative to the WGS-84 ellipsoid
+    temperature : None or array_like of float, optional
+        celcius, default is 14.6 (global average in 2013)
+    pressure : None or array_like of float, optional
+        millibar, default is 1013 (global average in ??)
+    delta_t : array_like of float, optional
+        seconds, default is 0, difference between the earth's rotation time (TT) and universal time (UT)
+    radians : bool, optional
+        return results in radians if True, degrees if False (default)
+
+    Returns
+    -------
+    coords : ndarray, (...,3)
+        The shape of the array is parameters broadcast together, plus a final dimension for the coordinates.
+        coords[...,0] = topocentric right ascension
+        coords[...,1] = topocentric declination
+        coords[...,2] = topocentric hour angle
+    """
+    if temperature is None:
+        temperature = 14.6
+    if pressure is None:
+        pressure = 1013
+    
+    #6367444 = radius of earth
+    #numpy broadcasting
+    b = np.broadcast(dt,latitude,longitude,elevation,temperature,pressure,delta_t)
+    res = np.empty(b.shape+(2,))
+    res_vec = res.reshape((-1,2))
+    for i,x in enumerate(b):
+        res_vec[i] = _sp.topo_pos(*x)
+    if radians:
+        res = np.deg2rad(res)
+    return res   
+
+def sunpos(dt, latitude, longitude, elevation, temperature=None, pressure=None, delta_t=0, radians=False):
+    """Compute the observed and topocentric coordinates of the sun as viewed at the given time and location.
+
+    Parameters
+    ----------
+    dt : array_like of datetime or float
+        UTC datetime objects or UTC timestamps (as per datetime.utcfromtimestamp) representing the times of observations
+    latitude, longitude : array_like of float
+        decimal degrees, positive for north of the equator and east of Greenwich
+    elevation : array_like of float
+        meters, relative to the WGS-84 ellipsoid
+    temperature : None or array_like of float, optional
+        celcius, default is 14.6 (global average in 2013)
+    pressure : None or array_like of float, optional
+        millibar, default is 1013 (global average in ??)
+    delta_t : array_like of float, optional
+        seconds, default is 0, difference between the earth's rotation time (TT) and universal time (UT)
+    radians : bool, optional
+        return results in radians if True, degrees if False (default)
+
+    Returns
+    -------
+    coords : ndarray, (...,5)
+        The shape of the array is parameters broadcast together, plus a final dimension for the coordinates.
+        coords[...,0] = observed azimuth angle, measured eastward from north
+        coords[...,1] = observed zenith angle, measured down from vertical
+        coords[...,2] = topocentric right ascension
+        coords[...,3] = topocentric declination
+        coords[...,4] = topocentric hour angle
+    """
+
+    if temperature is None:
+        temperature = 14.6
+    if pressure is None:
+        pressure = 1013
+    
+    #6367444 = radius of earth
+    #numpy broadcasting
+    b = np.broadcast(dt,latitude,longitude,elevation,temperature,pressure,delta_t)
+    res = np.empty(b.shape+(5,))
+    res_vec = res.reshape((-1,5))
+    for i,x in enumerate(b):
+        res_vec[i] = _sp.pos(*x)
+    if radians:
+        res = np.deg2rad(res)
+    return res
+
+def main(args):
+    az, zen, ra, dec, h = sunpos(args.t, args.lat, args.lon, args.elev, args.temp, args.p, args.dt, args.rad)
+    if args.csv:
+        #machine readable
+        print('{t}, {dt}, {lat}, {lon}, {elev}, {temp}, {p}, {az}, {zen}, {ra}, {dec}, {h}'.format(t=args.t, dt=args.dt, lat=args.lat, lon=args.lon, elev=args.elev,temp=args.temp, p=args.p,az=az, zen=zen, ra=ra, dec=dec, h=h))
+    else:
+        dr='deg'
+        if args.rad:
+            dr='rad'
+        print("Computing sun position at T = {t} + {dt} s".format(t=args.t, dt=args.dt))
+        print("Lat, Lon, Elev = {lat} deg, {lon} deg, {elev} m".format(lat=args.lat, lon=args.lon, elev=args.elev))
+        print("T, P = {temp} C, {press} mbar".format(temp=args.temp, press=args.p))
+        print("Results:")
+        print("Azimuth, zenith = {az} {dr}, {zen} {dr}".format(az=az,zen=zen,dr=dr))
+        print("RA, dec, H = {ra} {dr}, {dec} {dr}, {h} {dr}".format(ra=ra, dec=dec, h=h, dr=dr))
+
+if __name__ == '__main__':
+    from argparse import ArgumentParser
+    import datetime, sys
+    parser = ArgumentParser(prog='sunposition',description='Compute sun position parameters given the time and location')
+    parser.add_argument('--version',action='version',version='%(prog)s 1.0')
+    parser.add_argument('--citation',dest='cite',action='store_true',help='Print citation information')
+    parser.add_argument('-t,--time',dest='t',type=str,default='now',help='"now" or date and time (UTC) in "YYYY-MM-DD hh:mm:ss.ssssss" format or a (UTC) POSIX timestamp')
+    parser.add_argument('-lat,--latitude',dest='lat',type=float,default=51.48,help='latitude, in decimal degrees, positive for north')
+    parser.add_argument('-lon,--longitude',dest='lon',type=float,default=0.0,help='longitude, in decimal degrees, positive for east')
+    parser.add_argument('-e,--elevation',dest='elev',type=float,default=0,help='elevation, in meters')
+    parser.add_argument('-T,--temperature',dest='temp',type=float,default=14.6,help='temperature, in degrees celcius')
+    parser.add_argument('-p,--pressure',dest='p',type=float,default=1013.0,help='atmospheric pressure, in millibar')
+    parser.add_argument('-dt',type=float,default=0.0,help='difference between earth\'s rotation time (TT) and universal time (UT1)')
+    parser.add_argument('-r,--radians',dest='rad',action='store_true',help='Output in radians instead of degrees')
+    parser.add_argument('--csv',dest='csv',action='store_true',help='Comma separated values (time,dt,lat,lon,elev,temp,pressure,az,zen,RA,dec,H)')
+    args = parser.parse_args()
+    if args.cite:
+        print("Implementation: Samuel Bear Powell, 2016")
+        print("Algorithm:")
+        print("Ibrahim Reda, Afshin Andreas, \"Solar position algorithm for solar radiation applications\", Solar Energy, Volume 76, Issue 5, 2004, Pages 577-589, ISSN 0038-092X, doi:10.1016/j.solener.2003.12.003")
+        sys.exit(0)
+    if args.t == "now":
+        args.t = datetime.datetime.utcnow()
+    elif ":" in args.t and "-" in args.t:
+        try:
+            args.t = datetime.datetime.strptime(args.t,'%Y-%m-%d %H:%M:%S.%f') #with microseconds
+        except:
+            try:
+                args.t = datetime.datetime.strptime(args.t,'%Y-%m-%d %H:%M:%S.') #without microseconds
+            except:
+                args.t = datetime.datetime.strptime(args.t,'%Y-%m-%d %H:%M:%S')
+    else:
+        args.t = datetime.datetime.utcfromtimestamp(int(args.t))
+    main(args)
+
+
+
+
+
+
+
+
+
+
+
+
+if __name__ == "__main__":
+
+    test_1()
+    #test_2()
+    #test_3()
+    #test_4()
+    sys.exit(1)
+
+    # (1986, 2, 9, 10.0, 31.0, 41.08800530433655)
+    clock_mjd = 46470.43867000006
+    sun_eclip1 = pipe(clock_mjd, tc.mjd2jd,  pl.sun_geo_eclipt_position)
+    #print (sun_eclip)
+    print (co.as_str(sun_eclip1))
+    #r_geclip_sun_v1 = co.cartesianFpolar(sun_eclip.v)
+    #print (r_geclip_sun_v1)
+    #print (tc.MDJ_J2000)
+    #T = (clock_mjd - tc.MDJ_J2000) / 36525.0
+    #print ("T",T)
+    #r_geclip_sun_v2 = per.sunPos(0.8610797719370311)
+    #print (co.as_str(r_geclip_sun_v2)) 
+
+    sun_eclip2 = pipe(clock_mjd, tc.mjd2jd,  per.sun_geo_eclipt_position_v2)
+    print (co.as_str(sun_eclip2))

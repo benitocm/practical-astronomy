@@ -1,0 +1,4 @@
+2020-06-27 09:46:50,144 — keplerian.py — WARNING — calc_rv:339 — Doing hyperbolic orbit for e: 1.05773188
+2020-06-27 09:46:53,780 — keplerian.py — WARNING — calc_rv:339 — Doing hyperbolic orbit for e: 3.35619127
+2020-06-27 09:59:53,561 — keplerian.py — WARNING — calc_rv:339 — Doing hyperbolic orbit for e: 1.05773188
+2020-06-27 09:59:56,785 — keplerian.py — WARNING — calc_rv:339 — Doing hyperbolic orbit for e: 3.35619127
